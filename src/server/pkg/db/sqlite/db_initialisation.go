@@ -1,41 +1,24 @@
 package sqlite
 
+import (
+	"database/sql"
+	"fmt"
+	"log"
+)
+
 var DB *sql.DB
 
 func initDB() {
-	var err error 
+	var err error
 
 	DB, err = sql.Open("sqlite3", "./modules/users/social_network.db")
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: failed to open database: %v", err))
 	}
 
-
-
-
 	if err := ensureUsersTable(); err != nil {
 		log.Fatal(fmt.Errorf("Error: could not initialise users table: %v", err))
 	}
-
-
-		createUsersDB := `
-	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		email TEXT NOT NULL UNIQUE,
-		password text NOT NULL,
-		first_name text NOT NULL,
-		last_name text NOT NULL,
-		date_of_birth TEXT NOT NULL, -- Format: 'DD-MM-YYYY'
-		avatar_url TEXT,
-		nickname TEXT,
-		about_me TEXT
-	);
-	`
-
-	_, err := DB.Exec(createUsersDB)
-	if err != nil {
-		log.Fatal(fmt.Errorf("could not create user table: %v", err))
-	}	
 
 	createPostsDB := `
 	CREATE TABLE IF NOT EXISTS posts (
@@ -48,32 +31,22 @@ func initDB() {
 		);
 		`
 
-
-
 	_, err = DB.Exec(createPostsDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create post's table."))
 	}
 
-
-
-
-
-		createCategoryDB := `
+	createCategoryDB := `
 	CREATE TABLE IF NOT EXISTS categories (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, 
 		name TEXT NOT NULL UNIQUE
 	);  
 	`
 
-
-
 	_, err = DB.Exec(createCategoryDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create category's table."))
 	}
-
-
 
 	createPostCategoriesDB := `
 	CREATE TABLE IF NOT EXISTS post_categories (
@@ -86,15 +59,12 @@ func initDB() {
 	);
 	`
 
-
 	_, err = DB.Exec(createPostCategoriesDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create post_categories table"))
 	}
 
-
-
-		createCommentsDB := `
+	createCommentsDB := `
 	CREATE TABLE IF NOT EXISTS comments (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER NOT NULL,
@@ -119,13 +89,10 @@ func initDB() {
 		);
 		`
 
-
-
 	_, err = DB.Exec(createLikeDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create like's table."))
 	}
-
 
 	createDislikeDB := `
 	CREATE TABLE IF NOT EXISTS dislike (
@@ -137,15 +104,11 @@ func initDB() {
 		);
 		`
 
-
-
 	_, err = DB.Exec(createDislikeDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create dislike's table."))
 	}
 
-
-	// comments_like table holds likes on comments
 	createCommentLikeDB := `
 	CREATE TABLE IF NOT EXISTS comments_like (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,32 +119,24 @@ func initDB() {
 	);
 	`
 
-
-
 	_, err = DB.Exec(createCommentLikeDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create comments_like's table."))
 	}
-
-
 
 	createCommentDislikeDB := `
 	CREATE TABLE IF NOT EXISTS comments_dislike (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id INTEGER,
 		comment_id INTEGER,
-		FOREIGN KEY (user_id) REFERENCES users (id),
-		FOREIGN KEY (comment_id) REFERENCES comments (id)
+		FOREIGN KEY (user_id) REFERENCES comments (id)
 	);
 	`
-
-
 
 	_, err = DB.Exec(createCommentDislikeDB)
 	if err != nil {
 		log.Fatal(fmt.Errorf("Error: could not create comment_dislike's table."))
 	}
-
 
 	createSessionsDB := `
 	CREATE TABLE IF NOT EXISTS sessions (
@@ -192,62 +147,130 @@ func initDB() {
 	    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	    FOREIGN KEY (user_id) REFERENCES users (id)
 	);`
-	
 
+	_, err = DB.Exec(createSessionsDB)
+	if err != nil {
+		log.Fatal(fmt.Errorf("Error: could not create sessions table."))
+	}
+}
 
+func ensureUsersTable() error {
+	createUsersDB := `
+	CREATE TABLE IF NOT EXISTS users (
+	    id INTEGER PRIMARY KEY AUTOINCREMENT,
+	    nickname TEXT UNIQUE NOT NULL,
+	    age INTEGER NOT NULL,
+	    gender TEXT NOT NULL,
+	    first_name TEXT NOT NULL,
+	    last_name TEXT NOT NULL,
+	    email TEXT UNIQUE NOT NULL,
+	    password_hash TEXT NOT NULL,
+	    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+	_, err := DB.Exec(createUsersDB)
+	if err != nil {
+		return fmt.Errorf("could not create user table: %w", err)
+	}
 
 	columns, err := tableColumns("users")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-		if !hasColumn(columns, "email") {
-		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN email TEXT NOT NULL UNIQUE DEFAULT ''`); err != nil {
-			log.Fatal(err)
+	if !hasColumn(columns, "nickname") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN nickname TEXT`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "age") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN age INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "gender") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN gender TEXT NOT NULL DEFAULT 'Unknown'`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "first_name") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "last_name") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "email") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN email TEXT`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "password_hash") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !hasColumn(columns, "created_at") {
+		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP`); err != nil {
+			return err
 		}
 	}
 
 	if !hasColumn(columns, "password") {
 		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN password TEXT NOT NULL DEFAULT ''`); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if !hasColumn(columns, "first_name") {
-		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''`); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if !hasColumn(columns, "last_name") {
-		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''`); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if !hasColumn(columns, "date_of_birth") {
 		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN date_of_birth TEXT NOT NULL DEFAULT ''`); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if !hasColumn(columns, "avatar_url") {
 		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT`); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if !hasColumn(columns, "nickname") {
-		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN nickname TEXT`); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
 	if !hasColumn(columns, "about_me") {
 		if _, err := DB.Exec(`ALTER TABLE users ADD COLUMN about_me TEXT`); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+
+	return ensureCaseInsensitiveUserIndexes()
+}
+
+func ensureCaseInsensitiveUserIndexes() error {
+	columns, err := tableColumns("users")
+	if err != nil {
+		return err
+	}
+
+	if hasColumn(columns, "nickname") {
+		if _, err := DB.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_users_nickname_nocase
+			ON users(nickname COLLATE NOCASE)
+		`); err != nil {
+			return fmt.Errorf("could not create nickname index: %w", err)
+		}
+	}
+
+	if hasColumn(columns, "email") {
+		if _, err := DB.Exec(`
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_nocase
+			ON users(email COLLATE NOCASE)
+		`); err != nil {
+			return fmt.Errorf("could not create email index: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func tableColumns(tableName string) ([]string, error) {

@@ -3,6 +3,8 @@ package auth
 import (
 	"fmt"
 	"net/http"
+
+	pw "social-network/internal/platform/password"
 )
 
 type Login struct {
@@ -31,7 +33,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, _ := password.HashPassword(password)
+	hashedPassword, _ := pw.HashPassword(password)
 	users[username] = Login{
 		HashedPassword: hashedPassword,
 	}
@@ -52,7 +54,7 @@ func LoginFunc(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	user, ok := users[username]
-	if !ok || !CheckPasswordHash(password, user.HashedPassword) {
+	if !ok || !pw.CheckPasswordHash(password, user.HashedPassword) {
 		er := http.StatusUnauthorized
 		http.Error(w, "invalid username or password", er)
 		return
