@@ -10,7 +10,7 @@ Nothing domain-specific here. This is the plumbing every later phase assumes.
 ## Tasks
 
 ### 1. Settle the module path
-- [ ] Decide: `go.mod` stays at repo root (`module social`, imports `social/src/server/...`)
+- [x] Decide: `go.mod` stays at repo root (`module social`, imports `social/src/server/...`)
       **or** moves to `src/server/` (`module social/server`).
 - [ ] If moving: `mv go.mod src/server/` and re-run `go mod tidy` from there.
 - [ ] Do this before any other file exists. Changing it later is a repo-wide find/replace.
@@ -69,19 +69,7 @@ Nothing domain-specific here. This is the plumbing every later phase assumes.
 ### 8. Rewrite `cmd/server/main.go`
 Currently it parses `os.Args` and serves a nil handler. Replace with exactly four steps:
 - [ ] `config.Load()`
-- [ ] `sqlite.Open()` + `sqlite.Migrate()`
-- [ ] `app.New(...)`
-- [ ] `http.Server` with timeouts + graceful shutdown on SIGINT/SIGTERM.
-
-Keep the port-from-argv convenience if you like it, but read the default from config.
-
-> Thin `main` is not style. The audit asks "is there a clear separation among Server, App and
-> Database?" — a 30-line `main` that does these four things *is* the answer to that question.
-
-### 9. `cmd/migrate`
-- [ ] Subcommands: `up`, `down`, `force <version>`, `version`, `seed`.
-- [ ] Shares `pkg/db/sqlite` — no duplicated connection logic.
-
+- [ ] `sqlite.Open()` +zzzz
 ### 10. Gitignore the runtime artifacts
 Append to `.gitignore` (design doc §3.7):
 ```gitignore
