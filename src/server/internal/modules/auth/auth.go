@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -13,7 +14,7 @@ type Login struct {
 	CSRFToken      string
 }
 
-var users = map[string]Login{}
+var Users = map[string]Login{}
 
 func Register(w http.ResponseWriter, r *http.Request) {
 
@@ -27,14 +28,14 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// replace with db
-	if _, ok := users[username]; ok {
+	if _, ok := Users[username]; ok {
 		er := http.StatusConflict
 		http.Error(w, "User already exists", er)
 		return
 	}
 
 	hashedPassword, _ := pw.HashPassword(password)
-	users[username] = Login{
+	Users[username] = Login{
 		HashedPassword: hashedPassword,
 	}
 
@@ -53,20 +54,55 @@ func LoginFunc(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	user, ok := users[username]
+	user, ok := Users[username]
 	if !ok || !pw.CheckPasswordHash(password, user.HashedPassword) {
 		er := http.StatusUnauthorized
 		http.Error(w, "invalid username or password", er)
 		return
 	}
 
+	sessionToken := pw.GenerateToken(32)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:  "session_token",
+		Value: sessionToken,
+	})
+
+	user.SessionToken = sessionToken
+	Users[username] = user
+
 	fmt.Fprintln(w, "works")
 }
 
 func Logout(w http.ResponseWriter, r *http.Request) {
-
+	if err := Authorize(r); err != nil {
+		er := http.StatusUnauthorized
+		http.Error(w, "Unauthorized", er)
+		return
+	}
 }
 
 func Protected(w http.ResponseWriter, r *http.Request) {
 
+}
+
+// i think this should be in session/session.go but ill keep it here for now
+func Authorize(r *http.Request) error {
+	username := r.FormValue("username")
+	user, ok := Users[username]
+	if !ok {
+		return errors.New("Unauthorized")
+	}
+
+	st, err := r.Cookie("session_token")
+	if err != nil || st.Value == "" || st.Value != user.SessionToken {
+		return errors.New("Unauthorized")
+	}
+
+	csrf := r.Header.Get("X-CSRF-Token")
+	if csrf == "" || csrf != user.CSRFToken {
+		return errors.New("Unauthorized")
+	}
+
+	return nil
 }
