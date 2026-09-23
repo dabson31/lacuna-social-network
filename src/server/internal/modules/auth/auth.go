@@ -1,5 +1,7 @@
 package auth
 
+// auth — register, login, logout, session issuing. Owns the credential half of a user.
+
 import (
 	"errors"
 	"fmt"
