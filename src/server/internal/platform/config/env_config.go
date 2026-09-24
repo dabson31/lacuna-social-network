@@ -5,7 +5,8 @@ import (
 	"log"
 )
 
-type OAuthConfig struct {
+// 	
+type oAuthConfig struct {
 	Provider string
 	AuthURL string
 	TokenURL string
@@ -21,7 +22,7 @@ func LoadEnvVariables() (bool, error) {
 	}
 	
 	//todo: add the correct client information here
-	github := &OAuthConfig{
+	github := &oAuthConfig{
 		Provider:     "github",
 		// ClientID:     getEnv("GITHUB_CLIENT_ID", "GitHubClientID"),
 		// ClientSecret: getEnv("GITHUB_CLIENT_SECRET", "GitHubClientSecret"),
@@ -31,7 +32,7 @@ func LoadEnvVariables() (bool, error) {
 		// UserInfoURL:  "https://api.github.com/user",
 	}
 	
-	google := &OAuthConfig{
+	google := &oAuthConfig{
 		Provider:     "google",
 		// ClientID:     getEnv("GOOGLE_CLIENT_ID", "GoogleClientId"),
 		// ClientSecret: getEnv("GOOGLE_CLIENT_SECRET", "GoogleClientSecret"),

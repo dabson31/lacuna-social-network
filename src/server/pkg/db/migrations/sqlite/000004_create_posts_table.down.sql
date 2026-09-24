@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_posts_author;
+DROP INDEX IF EXISTS posts;
