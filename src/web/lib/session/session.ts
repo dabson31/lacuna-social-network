@@ -2,10 +2,13 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from "next/server";
 
-const secretKey = 'alep'; // put in .env or something 🥀🥀
+const secretKey = process.env.secretKey;
 const key = new TextEncoder().encode(secretKey);
 
 
+if(!secretKey) {
+    throw new Error("Missing secret")
+}
 
 export async function encrypt(payload: any) {
     return await new SignJWT(payload)
@@ -32,17 +35,13 @@ export async function login(formData: FormData) {
 
         const cookieStore = await cookies();
 
-        cookieStore.set("session", session, {
-            expires, 
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production", //only send it over https in production
-            sameSite: "lax", // CSRF protection
-            path: "/", // make the cookie available throughout your app
-        });
+        cookieStore.set("session", session, {expires, httpOnly: true});
 }
 
 export async function logout() {
         const cookieStore = await cookies();
+
+
     cookieStore.set('session', '', {expires: new Date(0)});
 }
 
@@ -55,6 +54,7 @@ export async function getSession() {
     if(!session) return null;
     return await decrypt(session);
 }
+
 
 
 export async function updateSession(request: NextRequest) {
