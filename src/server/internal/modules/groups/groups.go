@@ -19,7 +19,8 @@ func DeleteGroup() {
 
 }
 
-// mrmbership
+
+// membership
 func AddMember() {
 
 }
