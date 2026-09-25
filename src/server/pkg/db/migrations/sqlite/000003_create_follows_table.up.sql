@@ -1,10 +1,10 @@
--- both add and delete in one table
+-- both pending requests and accepted follows in one table
 -- public accounts accept the request right away, but private accounts are sent a pending request
 CREATE TABLE follows (
-    id INTEGER INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     followee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status TEXT NOT NULL CHECK (stauts IN ('pending', 'accepted')),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
     created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')),
     -- this covers who does this person follow
     UNIQUE (follower_id, followee_id),

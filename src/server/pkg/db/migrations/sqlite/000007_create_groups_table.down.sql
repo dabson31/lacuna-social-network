@@ -1,2 +1,2 @@
-DROP INDEX IF TABLE idx_groups_creator;
-DROP INDEX IF TABLE groups;
+DROP INDEX IF EXISTS idx_groups_creator;
+DROP TABLE IF EXISTS groups;

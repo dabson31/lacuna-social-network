@@ -10,6 +10,6 @@ CREATE TABLE users (
  nickname TEXT UNIQUE,
  about_me TEXT,
 --  sqlite has no boolean type so this is the idiomatic way of checking true and false
- is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_public IN (0, 1),
- created_at TIMESTAMP NOT NULL DEFAULT (datetime('now')
+ is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_public IN (0, 1)),
+ created_at TIMESTAMP NOT NULL DEFAULT (datetime('now'))
 );
