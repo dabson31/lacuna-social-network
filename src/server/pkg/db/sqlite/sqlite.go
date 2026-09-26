@@ -21,19 +21,21 @@ func Open(path string) (*sql.DB, error) {
 		// WAL allows users to read while a writer is still writing 
 		//! instead of modifying the db directly, writes are recorded in app.db-wal, then merges it into the main db
 		journal = "&_journal_mode=WAL"	
+		// if a write request and the db is closed, the lock forces a 5 seconds wait out
+		// if this isnt implemented, then SQLite implements a BUSY; an err wont be passed in this case
 		timeout = "&_busy_timeout=5000"
+		// 
 		txLock = "&_txlock=immediate"
 	)
 
-	// MkdirAll creates the entire directory path if needed, 
-	// while mkdir falls apart if the parent directory isnt there
-	// this helps if the folder structure were to be tampered with
-	// or when using Docker
+	// MkdirAll creates the entire directory path if needed, while mkdir falls apart if the parent directory isnt there
+	// this helps if the folder structure were to be tampered with or when using Docker
 	if err := os.MkdirAll(path, permission); err != nil {
 		return nil, fmt.Errorf("Error: create db dir; %w", err)
 	}
 
 	dsn := path + fk + journal + timeout + txLock
+
 
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
