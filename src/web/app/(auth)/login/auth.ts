@@ -10,10 +10,10 @@ if(!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
 }
 
 export const {handlers:{GET, POST}, auth, sign, signIn}= NextAuth({
-    // use some sort of adapter, instead of prisma use our sqlite
-    // something like "DrizzleAdapter(db)"
-    // for reference, an adapter is the layer that tells this auth.ts how to persist/store users,acc,sessions,tokens etc 
-    // into our database
+    // todo use some sort of adapter, instead of prisma use our sqlite
+    // todo something like "DrizzleAdapter(db)"
+    // todo for reference, an adapter is the layer that tells this auth.ts how to persist/store users,acc,sessions,tokens etc 
+    // todo into our database
     providers: [
         GitHub({
             clientId: GITHUB_CLIENT_ID,

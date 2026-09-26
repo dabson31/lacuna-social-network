@@ -26,7 +26,7 @@ export async function decrypt(input: string): Promise<any> {
 }
 
 export async function login(formData: FormData) {
-        // where we verify credentials
+        // todo where we verify credentials
         const user = {email: formData.get("email"), name: 'test'};
 
         // Create the session
