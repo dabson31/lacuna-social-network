@@ -106,6 +106,21 @@ func Recover(log *slog.Logger) Middleware {
 	}
 }
 
+// not finished yet
+func CORS(allowedOrigins string) Middleware {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			allowed := origin != "" && origin == allowedOrigins
+
+			w.Header().Add("Vary", "Origin")
+			if allowed {
+				
+			}
+		})
+	}
+}
+
 // this is the global upper limit that applies before ANY handler reads the body
 // you can make it smaller like in DecodeJSON, but you cant loosen it. (5GB LIMIT)
 func MaxBodyBytes(n int64) Middleware {
