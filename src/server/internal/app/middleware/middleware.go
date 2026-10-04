@@ -7,133 +7,221 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
-	"social/src/server/internal/platform/httpx"
 	"time"
+
+	"social/src/server/internal/platform/httpx"
 )
 
-type Middleware func(http.Handler) http.Handler
+// anything with a ServeHTTP(w, r) method counts as an http.Handler and each middleware is a small struct holding two things
+// the settings: a logger, the allowed origin, a size limit; Next: the handler it passes the request on to
+//! the structur looks like this: RequestLog → Recover → CORS → MaxBodyBytes → mux → your handler
 
-// Chain (h, A, B, C) == A(B(C(h))), basically starts with handler h, wraps C around it, then wraps B around C(h), and then A around B(C(h))
-func Chain(h http.Handler, mws ...Middleware) http.Handler {
-	for i := len(mws) - 1; i >= 0; i-- {
-		h = mws[i](h)
-	}
-	return h
-}
-
-// statusRecorder wraps response writer  to remember the statusd code because it has no way to ask what the handler sent
+// so, ResponseWriter lets you only send without reading, statusRecorder saves it
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
-func (r *statusRecorder) WriteHeader(code int) {
-	if r.status == 0 {
-		r.status = code
+// WriteHeader is how a handler sends a status code
+func (rec *statusRecorder) WriteHeader(code int) {
+	if rec.status == 0 {
+		rec.status = code
 	}
-	r.ResponseWriter.WriteHeader(code)
+	rec.ResponseWriter.WriteHeader(code)
 }
 
-// if a handler calls write with writeheader, and gets an implicit 200 we need to record that else the reqs will be logged as status=0
-func (r *statusRecorder) Write(b []byte) (int, error) {
-	if r.status == 0 {
-		r.status = http.StatusOK
+// a handler that calls Write without calling WriteHeader first gets an automatic 200. 
+// otherwise those requests would be logged as status=0
+func (rec *statusRecorder) Write(b []byte) (int, error) {
+	if rec.status == 0 {
+		rec.status = http.StatusOK
 	}
-	return r.ResponseWriter.Write(b)
+	return rec.ResponseWriter.Write(b)
 }
 
-// we need this for the websocket upgrade from normal http, as without it every websocket upgrade would fail with "response does not implement http.Hijacker"
-// so we need to just forward it here so it doesnt cause said issues
-func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	h, ok := r.ResponseWriter.(http.Hijacker)
+//! hijack is needed for WS
+// gorilla/websocket takes over the connection by checking whether the writer has a Hijack method. 
+// our recorder would hide the real writer's Hijack, and every WebSocket upgrade would fail with "response does not implement http.Hijacker"
+func (rec *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := rec.ResponseWriter.(http.Hijacker)
 	if !ok {
 		return nil, nil, errors.New("underlying ResponseWriter does not support hijacking")
 	}
 	return h.Hijack()
 }
 
-// unwrap to let http response controller reach th real writer (flush, deadlines)
-func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
+// Unwrap returns the real writer, so http.ResponseController can reach its deadline methods through our recorder
+func (rec *statusRecorder) Unwrap() http.ResponseWriter { return rec.ResponseWriter }
 
-// log slog 🗣️
-func RequestLog(log *slog.Logger) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			rec := &statusRecorder{ResponseWriter: w}
-			next.ServeHTTP(rec, r)
-			log.Info("request",
-				"method", r.Method,
-				"path", r.URL.Path,
-				"status", rec.status,
-				"duration", time.Since(start),
-			)
-		})
+// RequestLog writes one log line per request: method, path, status, and duration used
+type RequestLog struct {
+	Log  *slog.Logger
+	Next http.Handler
+}
+
+func (m RequestLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	// Give everything after us the recorder instead of the real writer,
+	// so we can read the status code once they're done.
+	rec := &statusRecorder{ResponseWriter: w}
+
+	// Run the rest of the chain (Recover, CORS, ..., the handler).
+	// This line only returns once the response has been written.
+	m.Next.ServeHTTP(rec, r)
+
+	m.Log.Info("request",
+		"method", r.Method,
+		"path", r.URL.Path, // only the path, never the query string: queries can carry tokens
+		"status", rec.status,
+		"duration", time.Since(start),
+	)
+}
+
+// the catch panic and recover catches any panic in any handler and turns it into a logged 500 json response
+// else, net/http catches the panic itself and just cuts the connection, instead of handling it
+//? its like a traceback module in python
+// however, this only applies to the request's own goroutine, and not other stuff like a WS RW error 
+// or even bus handlers: events that listen and execute something right away 
+type Recover struct {
+	Log  *slog.Logger
+	Next http.Handler
+}
+
+func (m Recover) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// defer makes sure to run this when ServeHTTP exits, regardless of how
+	defer m.catchPanic(w, r)
+	m.Next.ServeHTTP(w, r)
+}
+
+// catchPanic runs at the end of every request
+func (m Recover) catchPanic(w http.ResponseWriter, r *http.Request) {
+	v := recover()
+	if v == nil {
+		return
 	}
-}
 
-// this is our defence against panics, we turn them into a logged 500 instead of dropping connection
-// so net/http does not exactl recover panics itself, instead it cuts the connection, the browser sees
-// "network error" with no json and the stack goes to stderr instead of the logger.
-// (this will only work for the request's own goroutine, a panic in websockets read/write pumps and
-// event bus handlers WILL crash the whole process, and this middle wouldnt be able to catch it)
-func Recover(log *slog.Logger) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			defer func() {
-				v := recover()
-				if v == nil {
-					return
-				}
-				if v == http.ErrAbortHandler {
-					panic(v)
-				}
-
-				log.Error("panic recovered successfully",
-					"err", v,
-					"method", r.Method,
-					"path", r.URL.Path,
-					"stack", string(debug.Stack()),
-				)
-				// close connection after response cause handler mightve left the reuest body half read, and reusing this
-				// connection could ruin the next request
-				w.Header().Set("Connection", "close")
-				httpx.WriteError(w, http.StatusInternalServerError, "internal", "internal server error")
-			}()
-			next.ServeHTTP(w, r)
-		})
-
+	// here, we let net/http handle it the way it expects to rather than our own way of doing it 
+	if v == http.ErrAbortHandler {
+		panic(v)
 	}
+
+	m.Log.Error("panic recovered",
+		"err", v,
+		"method", r.Method,
+		"path", r.URL.Path,
+		"stack", string(debug.Stack()),
+	)
+
+	// here, we close the connection after this response
+	// because reusing the connection could mix those leftover bytes or whatever causes the issue into the next request
+	w.Header().Set("Connection", "close")
+	httpx.WriteError(w, http.StatusInternalServerError, "internal", "internal server error")
 }
 
-// not finished yet
-func CORS(allowedOrigins string) Middleware {
-	return func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			allowed := origin != "" && origin == allowedOrigins
+// CORS will let the next.js frontend call this API with the session cookie attached 
+// because the frontend runs on a different origin :3000 vs :8080.
+//! cross-origin resource sharing is a way to loosen the security feature (given by SOP, which is the security feature) 
+// allowing web apps to share to request resouces from different domains 
+// basically, browsers follow a rule called `Same-Origin Policy` or SOP. because the browser attaches a request to every site
+// so, when you're browsing a.com, SOP makes sure b.com cant read your cookie and requests you've made on a.com.
+// a page can't read the responses unless the other server explicitly agrees, and that agreement is the CORS headers
+type CORS struct {
+	AllowedOrigin string 		// for example, "http://localhost:3000"
+	Next          http.Handler
+}
 
-			w.Header().Add("Vary", "Origin")
-			if allowed {
-				
-			}
-		})
+//! definition and example given by: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+// An example of a cross-origin request: the front-end JavaScript code served from 
+// https://domain-a.com uses fetch() to make a request for https://domain-b.com/data.json.
+// For security reasons, browsers restrict cross-origin HTTP requests initiated from scripts. 
+func (m CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// the browser sends the site the request comes from in the Origin header
+	origin := r.Header.Get("Origin")
+	allowed := origin != "" && origin == m.AllowedOrigin
+
+	// the answer depends on Origin. Tell caches, so they never serve one origin's
+	// cached response to another.
+	w.Header().Add("Vary", "Origin")
+
+	if allowed {
+		// "*" means any origin is allowed
+		// apparently,browsers just reject "*" when cookies are sent 
+		// Echo back the exact origin, never "*": browsers reject "*" when cookies are sent
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		// without this the browser drops the session cookie, and every login looks broken
+
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
-}
 
-// this is the global upper limit that applies before ANY handler reads the body
-// you can make it smaller like in DecodeJSON, but you cant loosen it. (5GB LIMIT)
-func MaxBodyBytes(n int64) Middleware {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Body = http.MaxBytesReader(w, r.Body, n)
-			next.ServeHTTP(w, r)
-		})
+	// before sending json, the browser first sends a "preflight", which is OPTIONS request to make sure whether its allowed to  
+	isPreflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
+
+	if isPreflight {
+		if allowed {
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			// cache for 10 mins
+			w.Header().Set("Access-Control-Max-Age", "600")
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
+
+	// if its a normal reques, it will continue 
+	m.Next.ServeHTTP(w, r)
 }
 
-func RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		httpx.WriteError(w, http.StatusNotImplemented, "not_implement", "authentication is not implemented yet")
-	})
+// MaxBodyBytes simply caps the size of every request body so someone cant send a 5 GB body and fill up memory or disk
+type MaxBodyBytes struct {
+	Limit int64 // in bytes
+	Next  http.Handler
 }
+
+// here, we're swapping the body for one that returns an error if more than `Limit` bytes are read
+func (m MaxBodyBytes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, m.Limit)
+	m.Next.ServeHTTP(w, r)
+}
+
+// RequireAuth will protect any route that need a logged-in user
+// if it fails, it always answers 501 and never calls Next
+// mux.Handle("POST /api/posts", middleware.RequireAuth{Next: postsHandler})
+type RequireAuth struct {
+	Next http.Handler // not used until auth exists
+}
+
+func (m RequireAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	httpx.WriteError(w, http.StatusNotImplemented, "not_implemented", "authentication is not implemented yet")
+}
+
+//! note: this is the mental model:
+/*
+Browser
+   │
+   │ HTTP request
+   ▼
+┌─────────────────┐
+│   RequestLog    │  ← starts timer, wraps ResponseWriter
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│    Recover      │  ← catches panics
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│      CORS       │  ← checks browser's Origin
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ MaxBodyBytes    │  ← limits request body
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│      mux        │  ← finds the route
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│   your handler  │  ← actual application logic
+└─────────────────┘
+*/

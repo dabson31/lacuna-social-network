@@ -19,7 +19,7 @@ func Open(path string) (*sql.DB, error) {
 		permission os.FileMode = 0o755
 
 		// because FKs are off by default
-		fk = "?_foreignkeys=on"
+		fk = "?_foreign_keys=on"
 
 		//! journaling or write-ahead logging method:
 		// first writes down a summary of the actions to be performed into a "log" before actually writing
@@ -44,7 +44,8 @@ func Open(path string) (*sql.DB, error) {
 
 	// MkdirAll creates the entire directory path if needed, while mkdir falls apart if the parent directory isnt there
 	// this helps if the folder structure were to be tampered with or when using Docker
-	if err := os.MkdirAll(path, permission); err != nil {
+	//todo: this has to be checked, actually check for only "path" in argument
+	if err := os.MkdirAll(filepath.Dir(path), permission); err != nil {
 		return nil, fmt.Errorf("Error: create db dir; %w", err)
 	}
 
@@ -78,7 +79,8 @@ func NewMigrator(db *sql.DB, dir string) (*migrate.Migrate, error) {
 		return nil, fmt.Errorf("Error: migrate server; %v", err)
 	}
 
-	migrate, err := migrate.NewWithDatabaseInstance("files://"+abs, "sqlite3", driver)
+	// this motherfucking shit cannot be "files"; has to be "file"
+	migrate, err := migrate.NewWithDatabaseInstance("file://"+abs, "sqlite3", driver)
 	if err != nil {
 		return nil, fmt.Errorf("Error: migrate init: %v", err)
 	}
@@ -86,7 +88,7 @@ func NewMigrator(db *sql.DB, dir string) (*migrate.Migrate, error) {
 	return migrate, nil
 }
 
-//todo: handle this
+// todo: handle this
 func Migrate(db *sql.DB, dir string, log *slog.Logger) error {
 	m, err := NewMigrator(db, dir)
 	if err != nil {
@@ -94,12 +96,12 @@ func Migrate(db *sql.DB, dir string, log *slog.Logger) error {
 	}
 
 	before, dirty, err := m.Version()
-	// ErrNilVersion only refers to a new database; doesn't refer to a failure 
+	// ErrNilVersion only refers to a new database; doesn't refer to a failure
 	if err != nil && !errors.Is(err, migrate.ErrNilVersion) {
 		return fmt.Errorf("Error: migration version; %v", err)
 	}
-	
-	// "dirty" is basically if the migration failed halfway through 
+
+	// "dirty" is basically if the migration failed halfway through
 	// so if it does fails, run the previous version (version - 1)
 	if dirty {
 		return fmt.Errorf("Error: database is dirty (stinky db) at version; %d.\nTo fix the SQL, run: go run ./src/server/cmd/migrate force %d.\n%v", before, before-1, err)

@@ -29,7 +29,7 @@ func main() {
 
 func run(args []string) error {
 
-	if len(args) == 0 { 
+	if len(args) == 0 {
 		return fmt.Errorf(usage)
 	}
 
@@ -44,7 +44,8 @@ func run(args []string) error {
 		return err
 	}
 
-	m, err := sqlite.NewMigrator(db, cfg.DBPath)
+	//todo; originally, this had cfg.DBPath
+	m, err := sqlite.NewMigrator(db, cfg.MigrationsPath)
 	if err != nil {
 		db.Close()
 		return err

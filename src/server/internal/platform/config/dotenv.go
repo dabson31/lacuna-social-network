@@ -31,7 +31,7 @@ func loadDotEnv(path string) error {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		// this only removes the first instance of '=', meaning values with '=' will pass normally
 		key, value, ok := strings.Cut(line, "=")
 		if !ok {
@@ -45,7 +45,9 @@ func loadDotEnv(path string) error {
 		// along with a boolean that indicates whether its set. it allows to differntiate between an unset var
 		// and an empty one. Getenv only returns the value of the variable, it retuns nothing if its unset
 		_, exists := os.LookupEnv(key)
-		if exists { continue }
+		if exists {
+			continue
+		}
 
 		if err := os.Setenv(key, value); err != nil {
 			return fmt.Errorf("Error: line (%v) has an error; %v", lineNo, err)
