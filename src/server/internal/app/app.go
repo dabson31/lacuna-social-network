@@ -39,12 +39,12 @@ func New(d Dependencies) http.Handler {
 	})
 
 	//todo
-	// Wrap the router in middleware. Each one's Next is the one indented under it,
-	// so a request runs through them top to bottom and reaches the mux last.
-	// The order matters:
-	//   - RequestLog is first, so it logs the FINAL status (including Recover's 500).
-	//   - Recover is second, so it catches a panic in anything below it.
-	//   - CORS comes before the mux, so preflights are answered before the router can 405 them.
+	// wrap the router in middleware itself; each one's Next is the one indented under it
+	// meaning a request runs through them top to bottom and reaches the mux last.
+	// the architectural choice behind the choice matters here:
+	// 1. RequestLog is first, so it logs the final status
+	// 2. Recover is second to catch a panic in anything below it
+	// 3. CORS comes before the mux, this way, the preflights are answered before the router can 405 them
 	return middleware.RequestLog{
 		Log: d.Log,
 		Next: middleware.Recover{
