@@ -13,4 +13,5 @@ plan/
 src/server/data/uploads/*
 src/server/data/*.db
 
-.vscode
+.vscode/
+.vscode/*
