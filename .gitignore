@@ -12,3 +12,5 @@ plan/
 # db and uploads 
 src/server/data/uploads/*
 src/server/data/*.db
+
+.vscode

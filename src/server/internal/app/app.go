@@ -25,14 +25,14 @@ func New(d Dependencies) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// mountHealth(mux, d)
-	// mountAuth(mux, d)
+	mountHealth(mux, d)
+	mountAuth(mux, d)
 	// mountUser(mux, d)
-	// mountFollows(mux, d)
-	// mountPosts(mux, d)
+	mountFollows(mux, d)
+	mountPosts(mux, d)
 	// mountGrops(mux, d)
-	// mountChat(mux, d)
-	// mountNotification(mux, d)
+	mountChat(mux, d)
+	// mountNotification(mux, d) 
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "No such endpoint was found")

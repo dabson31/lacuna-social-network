@@ -18,7 +18,7 @@ func Open(path string) (*sql.DB, error) {
 		// the owner can RWE, group and others can only read and write
 		permission os.FileMode = 0o755
 
-		// because FKs are off by default
+		// because FKs are off by default, else the program would not work
 		fk = "?_foreign_keys=on"
 
 		//! journaling or write-ahead logging method:
@@ -26,6 +26,7 @@ func Open(path string) (*sql.DB, error) {
 		// it into the database. SQLite uses journaling mechanism, possibly blocking readers and writers
 		// WAL allows users to read while a writer is still writing
 		//instead of modifying the db directly, writes are recorded in app.db-wal, then merges it into the main db
+		//? once a change is acknowledged, it will persist and replay logged changes after recovery
 		journal = "&_journal_mode=WAL"
 
 		// if a write request and the db is closed, the lock forces a 5 seconds wait out
@@ -49,6 +50,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("Error: create db dir; %w", err)
 	}
 
+	// concat everything for the 
 	dsn := path + fk + journal + timeout + txLock
 
 	db, err := sql.Open("sqlite3", dsn)
