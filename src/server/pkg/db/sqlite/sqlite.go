@@ -114,7 +114,8 @@ func Migrate(db *sql.DB, dir string, log *slog.Logger) error {
 	err = m.Up()
 	if errors.Is(err, migrate.ErrNoChange) {
 		// this means that there is no error with the migration
-		log.Info("migration is up to date; %v", err)
+		//todo: check for err later
+		log.Info("migration is up to date; %w", err)
 		return nil
 	}
 

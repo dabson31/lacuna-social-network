@@ -8,12 +8,10 @@ import (
 	"social/src/server/internal/platform/httpx"
 )
 
-// Health lives in app/, not in a module: it has no domain logic, it just
-// checks that the process and the DB are reachable.
+// the health is in app/ and not in a module because it just checks that the process and the DB are reachable
 func mountHealth(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		// Ping the DB for real. A health check that returns "ok" while the database is
-		// unreachable is worse than having none: Docker will think the service is fine.
+		// ping the DB and check whether it returns anything
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 		if err := d.DB.PingContext(ctx); err != nil {
@@ -24,12 +22,11 @@ func mountHealth(mux *http.ServeMux, d Dependencies) {
 	})
 }
 
-// One mount function per module. Each phase fills in exactly one of these and nothing else
-// in this file changes. Right now they're empty, so the list is also your progress tracker.
-func mountAuth(mux *http.ServeMux, d Dependencies)          {} // Phase 3
-func mountUsers(mux *http.ServeMux, d Dependencies)         {} // Phase 4
-func mountFollows(mux *http.ServeMux, d Dependencies)       {} // Phase 4
-func mountPosts(mux *http.ServeMux, d Dependencies)         {} // Phase 5
-func mountGroups(mux *http.ServeMux, d Dependencies)        {} // Phase 6
-func mountChat(mux *http.ServeMux, d Dependencies)          {} // Phase 7
-func mountNotifications(mux *http.ServeMux, d Dependencies) {} // Phase 8
+// because everything is modular, there is one function per module
+func mountAuth(mux *http.ServeMux, d Dependencies)          {} 
+func mountUsers(mux *http.ServeMux, d Dependencies)         {} 
+func mountFollows(mux *http.ServeMux, d Dependencies)       {} 
+func mountPosts(mux *http.ServeMux, d Dependencies)         {} 
+func mountGroups(mux *http.ServeMux, d Dependencies)        {} 
+func mountChat(mux *http.ServeMux, d Dependencies)          {} 
+func mountNotifications(mux *http.ServeMux, d Dependencies) {} 
