@@ -106,6 +106,33 @@ func Recover(log *slog.Logger) Middleware {
 	}
 }
 
+// CORS lets the Next.js origin call this API WITH cookies.
+func CORS(allowedOrigin string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			allowed := origin != "" && origin == allowedOrigin
+
+			w.Header().Add("Vary", "Origin")
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+				if allowed {
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+					// Browsers cache the preflight for 10 minutes instead of doubling every request.
+					w.Header().Set("Access-Control-Max-Age", "600")
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // this is the global upper limit that applies before ANY handler reads the body
 // you can make it smaller like in DecodeJSON, but you cant loosen it. (5GB LIMIT)
 func MaxBodyBytes(n int64) Middleware {
