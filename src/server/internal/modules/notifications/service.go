@@ -2,16 +2,25 @@ package notifications
 
 import (
 	"context"
+	"log/slog"
 
 	"social/src/server/internal/platform/events"
+	"social/src/server/internal/platform/realtime"
 )
 
 type Service struct {
 	store *Store
+	// Push is wired at startup the same way the buses are. nil means notifications are
+	// still stored and still turn up on page load, the bell just doesnt light up until a
+	// refresh, which is exactly the behaviour this is upgrading
+	Push Pusher
+	// the logger is here because a failed push has no caller to return an error to, the
+	// row already exists and the request that caused it is long gone
+	log *slog.Logger
 }
 
-func NewService(store *Store) *Service {
-	return &Service{store: store}
+func NewService(store *Store, log *slog.Logger) *Service {
+	return &Service{store: store, log: log}
 }
 
 // Record is the event bus subscriber, it turns an event into a stored notification, it
@@ -22,14 +31,29 @@ func (s *Service) Record(ctx context.Context, e events.Event) error {
 	if e.RecipientID == e.ActorID {
 		return nil
 	}
-	if err := s.store.insert(ctx, e.RecipientID, e.Kind, e.ActorID, e.EntityID); err != nil {
+	id, err := s.store.insert(ctx, e.RecipientID, e.Kind, e.ActorID, e.EntityID)
+	if err != nil {
 		return err
 	}
 
-	// the row is written first so an offline user still sees it on next login, this is
-	// where a notification new frame will be pushed to the recipient over the websocket
-	// once the realtime hub exists, delivery is best effort on top of the stored row
-
+	//! the row is written FIRST so an offline user still finds it on next login. the push
+	//! is a live upgrade sitting on top of a durable row and never a replacement for it,
+	//! which is why everything below logs and returns nil: the notification exists either
+	//! way, the only thing that got missed is the doorbell
+	if s.Push == nil {
+		return nil
+	}
+	n, err := s.store.byID(ctx, id)
+	if err != nil {
+		s.log.Error("notifications: read back for push", "id", id, "err", err)
+		return nil
+	}
+	frame, err := realtime.Encode(FrameNotificationNew, n)
+	if err != nil {
+		s.log.Error("notifications: encode frame", "id", id, "err", err)
+		return nil
+	}
+	s.Push.SendToUser(e.RecipientID, frame)
 	return nil
 }
 

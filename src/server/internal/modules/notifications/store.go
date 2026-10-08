@@ -14,16 +14,35 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-// insert writes one notification, entityID may be null for a kind that points at nothing,
-// the caller has already decided the recipient is not the actor
-func (s *Store) insert(ctx context.Context, userID int64, typ string, actorID int64, entityID *int64) error {
-	_, err := s.db.ExecContext(ctx,
+// insert writes one notification and gives back its id, entityID may be null for a kind
+// that points at nothing, the caller has already decided the recipient is not the actor
+//! it returns the id now because the service needs to read the row straight back out to
+//! push it, a notification frame with no actor name on it is useless to the frontend
+func (s *Store) insert(ctx context.Context, userID int64, typ string, actorID int64, entityID *int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO notifications (user_id, type, actor_id, entity_id) VALUES (?, ?, ?, ?)`,
 		userID, typ, actorID, entityID)
 	if err != nil {
-		return fmt.Errorf("insert notification: %w", err)
+		return 0, fmt.Errorf("insert notification: %w", err)
 	}
-	return nil
+	return res.LastInsertId()
+}
+
+// byID reads one row in the exact same shape list returns, so a pushed frame and a row
+// fetched from the inbox are identical and the frontend needs one renderer, not two
+func (s *Store) byID(ctx context.Context, id int64) (Notification, error) {
+	var n Notification
+	err := s.db.QueryRowContext(ctx,
+		`SELECT n.id, n.type, n.actor_id, u.first_name || ' ' || u.last_name, u.avatar_path,
+		        n.entity_id, n.read_at, n.created_at
+		 FROM notifications n JOIN users u ON u.id = n.actor_id
+		 WHERE n.id = ?`, id,
+	).Scan(&n.ID, &n.Type, &n.ActorID, &n.ActorName, &n.ActorAvatar,
+		&n.EntityID, &n.ReadAt, &n.CreatedAt)
+	if err != nil {
+		return Notification{}, fmt.Errorf("notification by id: %w", err)
+	}
+	return n, nil
 }
 
 // list returns the inbox newest first, joined with the actor for a name and avatar, the

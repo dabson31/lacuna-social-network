@@ -23,3 +23,8 @@ type Feed struct {
 	Notifications []Notification `json:"notifications"`
 	UnreadCount   int            `json:"unread_count"`
 }
+
+// the frame type this module owns, mirrored in src/shared/constants/ws.ts
+//! this is the upgrade from "fetch on load" to live: the same row that gets stored also
+//! goes down the socket, so the bell lights up without a refresh
+const FrameNotificationNew = "notification.new"
