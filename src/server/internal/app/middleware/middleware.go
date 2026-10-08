@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"social/src/server/internal/platform/httpx"
+	"social/src/server/internal/platform/session"
 )
 
 // anything with a ServeHTTP(w, r) method counts as an http.Handler and each middleware is a small struct holding two things
@@ -30,7 +31,7 @@ func (rec *statusRecorder) WriteHeader(code int) {
 	rec.ResponseWriter.WriteHeader(code)
 }
 
-// a handler that calls Write without calling WriteHeader first gets an automatic 200. 
+// a handler that calls Write without calling WriteHeader first gets an automatic 200.
 // otherwise those requests would be logged as status=0
 func (rec *statusRecorder) Write(b []byte) (int, error) {
 	if rec.status == 0 {
@@ -39,8 +40,8 @@ func (rec *statusRecorder) Write(b []byte) (int, error) {
 	return rec.ResponseWriter.Write(b)
 }
 
-//! hijack is needed for WS
-// gorilla/websocket takes over the connection by checking whether the writer has a Hijack method. 
+// ! hijack is needed for WS
+// gorilla/websocket takes over the connection by checking whether the writer has a Hijack method.
 // our recorder would hide the real writer's Hijack, and every WebSocket upgrade would fail with "response does not implement http.Hijacker"
 func (rec *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	h, ok := rec.ResponseWriter.(http.Hijacker)
@@ -80,9 +81,9 @@ func (m RequestLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // the catch panic and recover catches any panic in any handler and turns it into a logged 500 json response
 // else, net/http catches the panic itself and just cuts the connection, instead of handling it
-//? its like a traceback module in python
-// however, this only applies to the request's own goroutine, and not other stuff like a WS RW error 
-// or even bus handlers: events that listen and execute something right away 
+// ? its like a traceback module in python
+// however, this only applies to the request's own goroutine, and not other stuff like a WS RW error
+// or even bus handlers: events that listen and execute something right away
 type Recover struct {
 	Log  *slog.Logger
 	Next http.Handler
@@ -101,7 +102,7 @@ func (m Recover) catchPanic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// here, we let net/http handle it the way it expects to rather than our own way of doing it 
+	// here, we let net/http handle it the way it expects to rather than our own way of doing it
 	if v == http.ErrAbortHandler {
 		panic(v)
 	}
@@ -119,22 +120,22 @@ func (m Recover) catchPanic(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteError(w, http.StatusInternalServerError, "internal", "internal server error")
 }
 
-// CORS will let the next.js frontend call this API with the session cookie attached 
+// CORS will let the next.js frontend call this API with the session cookie attached
 // because the frontend runs on a different origin :3000 vs :8080.
-//! cross-origin resource sharing is a way to loosen the security feature (given by SOP, which is the security feature) 
-// allowing web apps to share to request resouces from different domains 
+// ! cross-origin resource sharing is a way to loosen the security feature (given by SOP, which is the security feature)
+// allowing web apps to share to request resouces from different domains
 // basically, browsers follow a rule called `Same-Origin Policy` or SOP. because the browser attaches a request to every site
 // so, when you're browsing a.com, SOP makes sure b.com cant read your cookie and requests you've made on a.com.
 // a page can't read the responses unless the other server explicitly agrees, and that agreement is the CORS headers
 type CORS struct {
-	AllowedOrigin string 		// for example, "http://localhost:3000"
+	AllowedOrigin string // for example, "http://localhost:3000"
 	Next          http.Handler
 }
 
-//! definition and example given by: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
-// An example of a cross-origin request: the front-end JavaScript code served from 
+// ! definition and example given by: https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+// An example of a cross-origin request: the front-end JavaScript code served from
 // https://domain-a.com uses fetch() to make a request for https://domain-b.com/data.json.
-// For security reasons, browsers restrict cross-origin HTTP requests initiated from scripts. 
+// For security reasons, browsers restrict cross-origin HTTP requests initiated from scripts.
 func (m CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// the browser sends the site the request comes from in the Origin header
 	origin := r.Header.Get("Origin")
@@ -146,7 +147,7 @@ func (m CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if allowed {
 		// "*" means any origin is allowed
-		// apparently,browsers just reject "*" when cookies are sent 
+		// apparently,browsers just reject "*" when cookies are sent
 		// Echo back the exact origin, never "*": browsers reject "*" when cookies are sent
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		// without this the browser drops the session cookie, and every login looks broken
@@ -154,7 +155,7 @@ func (m CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
 
-	// before sending json, the browser first sends a "preflight", which is OPTIONS request to make sure whether its allowed to  
+	// before sending json, the browser first sends a "preflight", which is OPTIONS request to make sure whether its allowed to
 	isPreflight := r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != ""
 
 	if isPreflight {
@@ -168,7 +169,7 @@ func (m CORS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// if its a normal reques, it will continue 
+	// if its a normal reques, it will continue
 	m.Next.ServeHTTP(w, r)
 }
 
@@ -184,15 +185,38 @@ func (m MaxBodyBytes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.Next.ServeHTTP(w, r)
 }
 
-// RequireAuth will protect any route that need a logged-in user
-// if it fails, it always answers 501 and never calls Next
-// mux.Handle("POST /api/posts", middleware.RequireAuth{Next: postsHandler})
+// RequireAuth protects any route that needs a logged-in user.
+// it reads the session cookie, looks the session up, and puts the user id in the request context.
+// if anything is missing or expired it answers 401 and never calls Next
 type RequireAuth struct {
-	Next http.Handler // not used until auth exists
+	Sessions *session.Store
+	Log      *slog.Logger
+	Next     http.Handler
 }
 
 func (m RequireAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteError(w, http.StatusNotImplemented, "not_implemented", "authentication is not implemented yet")
+	cookie, err := r.Cookie(session.CookieName)
+	if err != nil {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthenticated", "you must be logged in")
+		return
+	}
+
+	sess, err := m.Sessions.Get(r.Context(), cookie.Value)
+	if errors.Is(err, session.ErrNotFound) {
+		// the browser is holding a dead cookie; tell it to drop it
+		m.Sessions.ClearCookie(w)
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthenticated", "your session has expired")
+		return
+	}
+	if err != nil {
+		m.Log.Error("require auth", "err", err)
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "internal server error")
+		return
+	}
+
+	// r.WithContext makes a copy of the request carrying the user id; handlers read it with session.UserID
+	ctx := session.WithUserID(r.Context(), sess.UserID)
+	m.Next.ServeHTTP(w, r.WithContext(ctx))
 }
 
 //! note: this is the mental model:

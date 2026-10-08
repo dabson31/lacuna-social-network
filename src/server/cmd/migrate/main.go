@@ -46,6 +46,8 @@ func run(args []string) error {
 
 	//todo; originally, this had cfg.DBPath
 	m, err := sqlite.NewMigrator(db, cfg.MigrationsPath)
+	m.Close()
+
 	if err != nil {
 		db.Close()
 		return err
@@ -56,7 +58,7 @@ func run(args []string) error {
 		err = m.Up()
 	case "down":
 		err = m.Down()
-	case "steps":
+	case "step":
 		n, stepsErr := intArg(args)
 		if stepsErr != nil {
 			return stepsErr

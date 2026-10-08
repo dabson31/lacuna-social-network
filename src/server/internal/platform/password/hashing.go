@@ -1,6 +1,7 @@
 package password
 
 import (
+	"errors"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -23,6 +24,11 @@ func CheckPassword(hash, password string) (bool, error) {
 	// it has been made into the following:
 
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return false, nil
+	}
+
 	if err != nil {
 		return false, fmt.Errorf("Error: The compared hashed password with its possible plaintext equivalent yielded an error.\nThe hashed and non-hashed passwords might be matching; %v", err)
 	}

@@ -15,3 +15,7 @@ src/server/data/*.db
 
 .vscode/
 .vscode/*
+# throwaway security demo
+unmarshal/
+
+src/server/data/*.db*

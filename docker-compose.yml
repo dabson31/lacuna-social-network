@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/server/Dockerfile
+    ports:
+      - "8080:8080" # host:container
+    environment:
+      APP_ENV: development
+      PORT: "8080"
+      DB_PATH: /app/data/social.db
+      MIGRATIONS_PATH: /app/migrations
+      UPLOAD_DIR: /app/data/uploads
+      SESSION_TTL: 168h
+      ALLOWED_ORIGIN: http://localhost:3000
+    volumes:
+      - backend-data:/app/data
+
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: src/web/Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     # The browser reaches the API at localhost:8080; code running INSIDE the
+  #     # frontend container would reach it at http://backend:8080 instead.
+  #     NEXT_PUBLIC_API_URL: http://localhost:8080
+  #   depends_on:
+  #     - backend
+
+volumes:
+  backend-data:

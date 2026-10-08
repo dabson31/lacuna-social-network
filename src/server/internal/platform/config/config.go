@@ -14,7 +14,7 @@ type Config struct {
 	DBPath         string
 	MigrationsPath string // *.sql files are read at runtime
 	UploadDir      string
-	SessionTTL     time.Time
+	SessionTTL     time.Duration
 	AllowedOrigin  string // for next.js, it handles the CORS and WS CheckOrigins
 }
 
@@ -53,7 +53,7 @@ func Load() (Config, error) {
 
 	// here, we have to convert a time.Duration to time.Time
 	//todo, but it also has to be checked later for possible errors, ngl
-	cfg.SessionTTL = time.Now().Add(ttl)
+	cfg.SessionTTL = ttl
 
 	// in case the migrations path doesnt exist
 	if info, err := os.Stat(cfg.MigrationsPath); err != nil || !info.IsDir() {

@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
-	// "github.com/golang-migrate/migrate"
 	"github.com/golang-migrate/migrate/v4"
 	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file" // for the file:// source driver
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 func Open(path string) (*sql.DB, error) {
@@ -50,7 +52,7 @@ func Open(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("Error: create db dir; %w", err)
 	}
 
-	// concat everything for the 
+	// concat everything for the
 	dsn := path + fk + journal + timeout + txLock
 
 	db, err := sql.Open("sqlite3", dsn)
@@ -115,7 +117,7 @@ func Migrate(db *sql.DB, dir string, log *slog.Logger) error {
 	if errors.Is(err, migrate.ErrNoChange) {
 		// this means that there is no error with the migration
 		//todo: check for err later
-		log.Info("migration is up to date; %w", err)
+		log.Info("migration is up to date")
 		return nil
 	}
 
@@ -124,6 +126,19 @@ func Migrate(db *sql.DB, dir string, log *slog.Logger) error {
 	}
 
 	after, _, _ := m.Version()
-	log.Info("migration applied", "from", "before", "to", after)
+	log.Info("migration applied", "from", before, "to", after)
 	return nil
+}
+
+// checks for whether err is a UNIQUE related failure on a given column for specificity
+// it is how we tell a taken email apart from a taken nickname, rather than "something" has been taken
+func IsUniqueViolation(err error, column string) bool {
+	var sqliteErr sqlite3.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+	if sqliteErr.ExtendedCode != sqlite3.ErrConstraintUnique && sqliteErr.ExtendedCode != sqlite3.ErrConstraintPrimaryKey {
+		return false
+	}
+	return strings.Contains(sqliteErr.Error(), column)
 }
