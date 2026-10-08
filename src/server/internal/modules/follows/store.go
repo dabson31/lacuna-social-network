@@ -176,3 +176,27 @@ func (s *Store) cards(ctx context.Context, query string, id int64) ([]UserCard, 
 	}
 	return out, rows.Err()
 }
+
+// connected checks if there is an accepted follow between two people, going either way.
+// either way matters because the dm rule is symmetric: you can message someone who
+// follows you just as much as someone you follow, so one query has to cover both rows
+//? the args are a, b then b, a. same pair, both directions
+// isAcceptedFollower above is the one-directional version, it answers "can i see your
+// stuff", which is a different question and stays separate
+func (s *Store) connected(ctx context.Context, a, b int64) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT 1 FROM follows
+		  WHERE status = 'accepted'
+		    AND ((follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?))
+		  LIMIT 1`, a, b, b, a).Scan(&one)
+
+	// no row just means they arent connected, thats not a failure
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("connected: %w", err)
+	}
+	return true, nil
+}

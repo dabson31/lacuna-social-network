@@ -153,3 +153,20 @@ func nullIfEmpty(s string) any {
 	}
 	return s
 }
+
+// state answers both halves of a visibility question at once: does this user exist at all,
+// and is their profile public. one row instead of two separate queries
+// base() already returns all of this, but it reads 10 columns and fills a raw struct, which
+// is a lot of work for a yes/no check that runs every time someone sends a message
+func (s *Store) state(ctx context.Context, id int64) (exists, isPublic bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT is_public FROM users WHERE id = ?`, id).Scan(&isPublic)
+
+	// no row = no user. false, false is already the right answer so theres nothing to build
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("user state: %w", err)
+	}
+	return true, isPublic, nil
+}

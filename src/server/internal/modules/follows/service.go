@@ -131,3 +131,12 @@ func (s *Service) canView(ctx context.Context, viewerID, ownerID int64) error {
 	}
 	return nil
 }
+
+// IsConnected is for other features that need the follow relation without caring how its
+// stored. chat calls it through its own FollowChecker interface, so chat never imports us
+//! note: this only answers the question, it doesnt decide anything with the answer.
+//! "two unconnected users cant chat" is chat's rule and lives in chat's service, otherwise
+//! we'd end up with follow rules spread over two modules
+func (s *Service) IsConnected(ctx context.Context, a, b int64) (bool, error) {
+	return s.store.connected(ctx, a, b)
+}

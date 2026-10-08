@@ -107,3 +107,13 @@ func validateUpdate(in UpdateProfileInput) httpx.ValidationErrors {
 	}
 	return fields
 }
+
+// ProfileState tells another feature whether a user exists and whether theyre public.
+// thats everything needed to apply a visibility rule, chat calls it through its
+// ProfileChecker interface
+//? exists comes back as its own return value instead of as an error on purpose: the two
+//? cases get different status codes later, a missing user is 404 and a private one is 403.
+//? returning errNotFound here would flatten them into the same thing
+func (s *Service) ProfileState(ctx context.Context, id int64) (exists, isPublic bool, err error) {
+	return s.store.state(ctx, id)
+}

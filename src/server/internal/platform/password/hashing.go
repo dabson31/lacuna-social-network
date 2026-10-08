@@ -9,7 +9,6 @@ import (
 
 //todo: if there is a better, more idiomatic way to handle the errors, do so
 //todo: but leave that for when you have to do the actual implementation
-
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

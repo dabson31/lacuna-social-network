@@ -150,3 +150,28 @@ func (s *Service) requireCreator(ctx context.Context, groupID, callerID int64) e
 	}
 	return nil
 }
+
+// IsMember and MemberIDs are this module's answers to other features, chat calls both of
+// them through its GroupChecker interface
+
+// IsMember is the bool version of requireMember. requireMember itself cant be used across
+// a module boundary because it returns errNotFound, which is an unexported sentinel that
+// only this module's handler knows how to map to a status code. a bool is the smallest
+// thing that can cross over without dragging our error handling with it
+func (s *Service) IsMember(ctx context.Context, groupID, userID int64) (bool, error) {
+	status, _, err := s.store.membership(ctx, groupID, userID)
+	if err != nil {
+		return false, err
+	}
+	return status == StatusMember, nil
+}
+
+// MemberIDs is the fan out list for a group chat message. it leaves nobody out, because the
+// sender's own other tabs need the message too, otherwise sending from your phone leaves
+// your laptop showing an old thread
+//! memberIDs takes an "except" id so it can skip someone, which is what CreateEvent uses to
+//! avoid notifying the creator of their own event. here we pass 0 instead, and 0 matches no
+//! user since AUTOINCREMENT starts counting at 1
+func (s *Service) MemberIDs(ctx context.Context, groupID int64) ([]int64, error) {
+	return s.store.memberIDs(ctx, groupID, 0)
+}
