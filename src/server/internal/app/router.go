@@ -6,6 +6,11 @@ import (
 	"time"
 
 	"social/src/server/internal/modules/auth"
+	"social/src/server/internal/modules/follows"
+	"social/src/server/internal/modules/groups"
+	"social/src/server/internal/modules/notifications"
+	"social/src/server/internal/modules/users"
+	"social/src/server/internal/platform/events"
 	"social/src/server/internal/platform/httpx"
 )
 
@@ -41,9 +46,88 @@ func mountAuth(mux *http.ServeMux, d Dependencies, s shared) {
 	mux.Handle("GET /api/auth/me", s.requireAuth(h.Me))
 }
 
-func mountUsers(mux *http.ServeMux, d Dependencies, s shared)         {}
-func mountFollows(mux *http.ServeMux, d Dependencies, s shared)       {}
-func mountPosts(mux *http.ServeMux, d Dependencies, s shared)         {}
-func mountGroups(mux *http.ServeMux, d Dependencies, s shared)        {}
-func mountChat(mux *http.ServeMux, d Dependencies, s shared)          {}
-func mountNotifications(mux *http.ServeMux, d Dependencies, s shared) {}
+// builds the users store service and handler then mounts the profile read, the two self
+// only patches and the browse search, every route needs a logged in caller
+func mountUsers(mux *http.ServeMux, d Dependencies, s shared) {
+	store := users.NewStore(d.DB)
+	svc := users.NewService(store)
+	h := users.NewHandler(svc, d.Log)
+
+	mux.Handle("GET /api/users", s.requireAuth(h.Search))
+	mux.Handle("GET /api/users/{id}", s.requireAuth(h.Get))
+	mux.Handle("PATCH /api/users/me", s.requireAuth(h.UpdateMe))
+	mux.Handle("PATCH /api/users/me/privacy", s.requireAuth(h.SetPrivacy))
+}
+
+// follows owns the follow graph, its routes hang off a user and off follow-requests, the
+// bus is set here so a request to a private account turns into a notification
+func mountFollows(mux *http.ServeMux, d Dependencies, s shared) {
+	store := follows.NewStore(d.DB)
+	svc := follows.NewService(store)
+	svc.Bus = s.bus
+	h := follows.NewHandler(svc, d.Log)
+
+	mux.Handle("POST /api/users/{id}/follow", s.requireAuth(h.Follow))
+	mux.Handle("DELETE /api/users/{id}/follow", s.requireAuth(h.Unfollow))
+	mux.Handle("GET /api/users/{id}/followers", s.requireAuth(h.Followers))
+	mux.Handle("GET /api/users/{id}/following", s.requireAuth(h.Following))
+
+	mux.Handle("GET /api/follow-requests", s.requireAuth(h.Incoming))
+	mux.Handle("POST /api/follow-requests/{id}/accept", s.requireAuth(h.Accept))
+	mux.Handle("POST /api/follow-requests/{id}/decline", s.requireAuth(h.Decline))
+}
+func mountPosts(mux *http.ServeMux, d Dependencies, s shared) {}
+
+// groups is the largest feature, it mounts the lifecycle, the two ways in by invite and by
+// request, the members only content and events, and the event respond route which hangs off
+// events not groups, the bus is set so invites join requests and new events become notifications
+func mountGroups(mux *http.ServeMux, d Dependencies, s shared) {
+	store := groups.NewStore(d.DB)
+	svc := groups.NewService(store, s.uploads)
+	svc.Bus = s.bus
+	h := groups.NewHandler(svc, d.Log)
+
+	mux.Handle("POST /api/groups", s.requireAuth(h.Create))
+	mux.Handle("GET /api/groups", s.requireAuth(h.Browse))
+	mux.Handle("GET /api/groups/{id}", s.requireAuth(h.Get))
+
+	mux.Handle("POST /api/groups/{id}/invite", s.requireAuth(h.Invite))
+	mux.Handle("POST /api/groups/{id}/invitations/accept", s.requireAuth(h.AcceptInvite))
+	mux.Handle("POST /api/groups/{id}/invitations/decline", s.requireAuth(h.DeclineInvite))
+	mux.Handle("GET /api/invitations", s.requireAuth(h.Invitations))
+
+	mux.Handle("POST /api/groups/{id}/join", s.requireAuth(h.Join))
+	mux.Handle("GET /api/groups/{id}/requests", s.requireAuth(h.Requests))
+	mux.Handle("POST /api/groups/{id}/requests/{userID}/accept", s.requireAuth(h.AcceptRequest))
+	mux.Handle("POST /api/groups/{id}/requests/{userID}/decline", s.requireAuth(h.DeclineRequest))
+	mux.Handle("DELETE /api/groups/{id}/membership", s.requireAuth(h.Leave))
+
+	mux.Handle("POST /api/groups/{id}/posts", s.requireAuth(h.CreatePost))
+	mux.Handle("GET /api/groups/{id}/posts", s.requireAuth(h.Posts))
+	mux.Handle("POST /api/groups/{id}/posts/{postID}/comments", s.requireAuth(h.CreateComment))
+	mux.Handle("GET /api/groups/{id}/posts/{postID}/comments", s.requireAuth(h.Comments))
+
+	mux.Handle("POST /api/groups/{id}/events", s.requireAuth(h.CreateEvent))
+	mux.Handle("GET /api/groups/{id}/events", s.requireAuth(h.Events))
+	mux.Handle("POST /api/events/{id}/respond", s.requireAuth(h.Respond))
+}
+func mountChat(mux *http.ServeMux, d Dependencies, s shared) {}
+
+// notifications is the one place that couples the four event kinds to the recorder, every
+// kind writes a row through the same record, the publish is fire and forget so its error
+// is dropped here, the group kinds are subscribed now and stay idle until groups publishes them
+func mountNotifications(mux *http.ServeMux, d Dependencies, s shared) {
+	store := notifications.NewStore(d.DB)
+	svc := notifications.NewService(store)
+	h := notifications.NewHandler(svc, d.Log)
+
+	record := func(ctx context.Context, e events.Event) { _ = svc.Record(ctx, e) }
+	s.bus.Subscribe(events.FollowRequested, record)
+	s.bus.Subscribe(events.GroupInvited, record)
+	s.bus.Subscribe(events.GroupJoinRequested, record)
+	s.bus.Subscribe(events.EventCreated, record)
+
+	mux.Handle("GET /api/notifications", s.requireAuth(h.List))
+	mux.Handle("POST /api/notifications/{id}/read", s.requireAuth(h.MarkRead))
+	mux.Handle("POST /api/notifications/read-all", s.requireAuth(h.MarkAllRead))
+}

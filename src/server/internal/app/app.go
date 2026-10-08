@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"social/src/server/internal/app/middleware"
 	"social/src/server/internal/platform/config"
+	"social/src/server/internal/platform/events"
 	"social/src/server/internal/platform/httpx"
 	"social/src/server/internal/platform/session"
 	"social/src/server/internal/platform/storage"
@@ -20,11 +21,12 @@ type Dependencies struct {
 
 // shared holds the platform pieces that are built once and handed to every module
 type shared struct {
-	sessions    *session.Store
-	uploads     *storage.Store
+	sessions *session.Store
+	uploads  *storage.Store
+	// bus is the in process pub sub, features publish to it and notifications listens
+	bus         *events.Bus
 	requireAuth func(http.HandlerFunc) http.Handler
 }
-
 
 // max request body size for an image and whatnot
 // for now its 10 mb, but its variable to change
@@ -42,9 +44,14 @@ func New(d Dependencies) (http.Handler, error) {
 	// sessions live in the db, the secure cookie flag is only on in production
 	sessions := session.NewStore(d.DB, d.Config.SessionTTL, d.Config.Env == "production")
 
+	// the event bus lets features announce things without importing each other, follows
+	// and groups publish, notifications listens, it is created here and handed to shared
+	bus := events.NewBus(d.Log)
+
 	s := shared{
 		sessions: sessions,
 		uploads:  uploads,
+		bus:      bus,
 		// wraps a handler so it only runs for a logged in user
 		requireAuth: func(next http.HandlerFunc) http.Handler {
 			return middleware.RequireAuth{Sessions: sessions, Log: d.Log, Next: next}

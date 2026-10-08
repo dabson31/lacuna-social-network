@@ -51,20 +51,18 @@ func (b *Bus) Subscribe(kind string, h Handler) {
 	b.subs[kind] = append(b.subs[kind], h)
 }
 
-// Publish is fire and forget, it never blocks the caller and never returns an error, a
-// notification that fails to write must not roll back the follow that triggered it, each
-// handler runs in its own goroutine with its own recover so one panic cannot take the
-// process down, we strip cancellation from the context because the request may have
-// already returned by the time the handler writes its row, yet we keep its values
+//! this is basically if something gets published, whoever is part of it, their handler itself will run 
+// since reading a map while another goroutine writes to it crashes it, it needs to be locked
+// each handler runs in its own goroutine with its own recover so one panic cannot take the process down
+// 
 func (b *Bus) Publish(ctx context.Context, e Event) {
 	b.mu.RLock()
 	handlers := b.subs[e.Kind]
 	b.mu.RUnlock()
 
 	ctx = context.WithoutCancel(ctx)
+	// an unrecovered panic in any goroutine kills the whole server process so we isolate the goroutine here
 	for _, h := range handlers {
-		h := h
-		// h := h
 		go func() {
 			defer func() {
 				if v := recover(); v != nil {
