@@ -1,0 +1,167 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { NavButton } from '@/components/ui/NavButton'
+import type { GroupPost } from '@shared/contracts/groups'
+import { Avatar } from '@/components/ui/Avatar'
+import { Empty, Loading } from '@/components/ui/Empty'
+import { ErrorView } from '@/components/ui/ErrorView'
+import { useToast } from '@/components/ui/Toast'
+import { LIMITS, runeLength } from '@/lib/utils/count'
+import { age } from '@/lib/utils/time'
+import { Attachment } from '@/features/posts/components/Attachment'
+import { Thread } from '@/features/posts/components/Thread'
+import { ImagePicker } from '@/features/auth/components/ImagePicker'
+import { createGroupComment, createGroupPost, listGroupComments, listGroupPosts } from '../api'
+
+/**
+ * group posts, members only.
+ * ? GroupPost has the same fields as Post minus privacy, because membership IS the privacy
+ * ? here — there is nothing per-post to decide. so the card is the design's .post block
+ * ? without the tag and the edge mark
+ * ? neither the posts nor their comments are paginated, both endpoints return whole lists
+ */
+export function GroupPostFeed({
+  groupId,
+  selfName,
+  selfAvatar,
+}: {
+  groupId: number
+  selfName: string
+  selfAvatar: string | null
+}) {
+  const [posts, setPosts] = useState<GroupPost[] | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [open, setOpen] = useState<number | null>(null)
+  const [content, setContent] = useState('')
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  const load = () => {
+    listGroupPosts(groupId).then(setPosts).catch(setError)
+  }
+
+  useEffect(load, [groupId])
+
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formEl = e.currentTarget
+    const body = new FormData(formEl)
+    if (runeLength(content.trim()) === 0 && !(body.get('image') as File | null)?.size) return
+
+    setBusy(true)
+    try {
+      const created = await createGroupPost(groupId, body)
+      setPosts((prev) => [created, ...(prev ?? [])])
+      setContent('')
+      formEl.reset()
+      toast('posted to the group')
+    } catch (err: unknown) {
+      setError(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (error && posts === null) return <ErrorView error={error} onRetry={load} />
+
+  return (
+    <>
+      <section className="compose" aria-label="New group post">
+        <form onSubmit={submit}>
+          <div className="row">
+            <Avatar name={selfName} path={selfAvatar} size="lg" />
+            <div className="field">
+              <textarea
+                name="content"
+                rows={2}
+                placeholder="Post to this group…"
+                aria-label="Group post body"
+                maxLength={LIMITS.post}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+              />
+              <div className="attached" data-open="1" style={{ marginTop: 8 }}>
+                <ImagePicker name="image" label="attach image" />
+              </div>
+              <div className="under">
+                <span className="lbl">visible to members only</span>
+                <div className="spacer" />
+                <span className="lbl">
+                  {runeLength(content)} / {LIMITS.post}
+                </span>
+                <button className="btn btn--primary" type="submit" disabled={busy}>
+                  {busy ? 'writing…' : 'post'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+
+      <div className="feed">
+        {posts === null && <Loading />}
+
+        {(posts ?? []).map((p) => (
+          <article className="post" key={p.id} data-id={p.id}>
+            <div className="post__hd">
+              <Avatar name={p.author_name} path={p.author_avatar} />
+              <div className="post__who">
+                <div className="nm">
+                  <NavButton href={`/profile/${p.author_id}`}>{p.author_name}</NavButton>
+                </div>
+                <div className="mt">
+                  <span>post {p.id}</span>
+                  <span>·</span>
+                  <span>{age(p.created_at)}</span>
+                </div>
+              </div>
+              <div className="spacer" />
+              <span className="tag tag--semi">members</span>
+            </div>
+
+            <div className="post__body">
+              {p.content && <p>{p.content}</p>}
+              {p.image_path && <Attachment path={p.image_path} />}
+            </div>
+
+            <div className="post__ft">
+              <button
+                className="act"
+                aria-expanded={open === p.id}
+                aria-controls={`gthread-${p.id}`}
+                onClick={() => setOpen(open === p.id ? null : p.id)}
+              >
+                reply <b>{p.comment_count}</b>
+              </button>
+            </div>
+
+            <div className="thread" id={`gthread-${p.id}`} hidden={open !== p.id}>
+              {open === p.id && (
+                <Thread
+                  postId={p.id}
+                  selfName={selfName}
+                  selfAvatar={selfAvatar}
+                  /*
+                    ? the group comment shapes match posts.Comment field for field apart from
+                    ? the post key, so the design's thread component serves both. mapped here
+                    ? rather than widening the component's type
+                  */
+                  load={async () =>
+                    (await listGroupComments(groupId, p.id)).map((c) => ({ ...c, post_id: c.group_post_id }))
+                  }
+                  submit={async (body) => {
+                    const c = await createGroupComment(groupId, p.id, body)
+                    return { ...c, post_id: c.group_post_id }
+                  }}
+                />
+              )}
+            </div>
+          </article>
+        ))}
+
+        {posts !== null && posts.length === 0 && <Empty label="nothing posted in this group yet" />}
+      </div>
+    </>
+  )
+}

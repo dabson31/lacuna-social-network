@@ -161,3 +161,24 @@ func clampLimit(limit int) int {
 // mustList drops the error from a list call inside a loop where we already handled it,
 // it keeps the happy path readable, any real error already surfaced on the insert
 func mustList(c []Comment, _ error) []Comment { return c }
+
+// Delete withdraws the caller's own post. a post that is not theirs, or not there, reads as
+// not found, the same way an invisible post does everywhere else in this module
+//! the files are unlinked after the row is committed and never before. the other order means
+//! a failed delete leaves a row pointing at an image that no longer exists, and a broken
+//! image in a feed is worse than a file nobody references
+func (s *Service) Delete(ctx context.Context, authorID, postID int64) error {
+	names, err := s.store.imagePaths(ctx, postID)
+	if err != nil {
+		return err
+	}
+	if err := s.store.remove(ctx, authorID, postID); err != nil {
+		return err
+	}
+	for _, name := range names {
+		// best effort, the post is already gone and a leftover file is not worth failing the
+		// request the caller is waiting on
+		_ = s.uploads.Delete(name)
+	}
+	return nil
+}

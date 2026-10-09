@@ -16,18 +16,19 @@ services:
     volumes:
       - backend-data:/app/data
 
-  # frontend:
-  #   build:
-  #     context: .
-  #     dockerfile: src/web/Dockerfile
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     # The browser reaches the API at localhost:8080; code running INSIDE the
-  #     # frontend container would reach it at http://backend:8080 instead.
-  #     NEXT_PUBLIC_API_URL: http://localhost:8080
-  #   depends_on:
-  #     - backend
+  frontend:
+    build:
+      context: .
+      dockerfile: src/web/Dockerfile
+      args:
+        #! inlined into the browser bundle at build time, so it has to be the url the reader's
+        #! browser can reach. code running INSIDE this container would use http://backend:8080,
+        #! but none of this app's fetching does — it all happens in the browser
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+    ports:
+      - "3000:3000" # host:container
+    depends_on:
+      - backend
 
 volumes:
   backend-data:

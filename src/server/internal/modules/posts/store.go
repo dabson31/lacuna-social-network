@@ -45,14 +45,15 @@ const visible = `(
 const selectPost = ` 
 	SELECT p.id, p.author_id, p.content, p.image_path, p.privacy, p.created_at,
 	       u.first_name || ' ' || u.last_name AS author_name, u.avatar_path,
-	       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+	       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+	       (SELECT COUNT(*) FROM post_viewers pv2 WHERE pv2.post_id = p.id) AS viewer_count
 	FROM posts p
 	JOIN users u ON u.id = p.author_id`
 
 func scanPost(rows *sql.Rows) (Post, error) {
 	var p Post
 	err := rows.Scan(&p.ID, &p.AuthorID, &p.Content, &p.ImagePath, &p.Privacy, &p.CreatedAt,
-		&p.AuthorName, &p.AuthorAvatar, &p.CommentCount)
+		&p.AuthorName, &p.AuthorAvatar, &p.CommentCount, &p.ViewerCount)
 	return p, err
 }
 
@@ -228,4 +229,53 @@ func (s *Store) comments(ctx context.Context, postID int64) ([]Comment, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// imagePaths collects every file this post owns, its own image plus one per comment, so the
+// service can unlink them after the row is gone
+//! the rows have to be read BEFORE the delete, because the cascade takes the comments with
+//! the post and then there is nothing left to ask. collecting afterwards leaves every comment
+//! image orphaned on disk forever, which is the kind of leak nobody notices until the volume
+//! fills up
+func (s *Store) imagePaths(ctx context.Context, postID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT image_path FROM posts WHERE id = ? AND image_path IS NOT NULL
+		 UNION ALL
+		 SELECT image_path FROM comments WHERE post_id = ? AND image_path IS NOT NULL`,
+		postID, postID)
+	if err != nil {
+		return nil, fmt.Errorf("post image paths: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan image path: %w", err)
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
+}
+
+// remove deletes a post, but only if the caller wrote it.
+//! the author check is in the WHERE and not in a separate SELECT, so there is no window
+//! between "is it yours" and "delete it". comments and post_viewers go with it through
+//! ON DELETE CASCADE, which only works because Open() sets foreign_keys = ON
+func (s *Store) remove(ctx context.Context, authorID, postID int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM posts WHERE id = ? AND author_id = ?`, postID, authorID)
+	if err != nil {
+		return fmt.Errorf("delete post: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// nothing matched, so either the post is gone or it belongs to somebody else. both read as
+	// not found, we never confirm that someone else's post exists to a caller who cannot touch it
+	if n == 0 {
+		return errNotVisible
+	}
+	return nil
 }

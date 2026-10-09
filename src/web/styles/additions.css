@@ -1,0 +1,139 @@
+/* ===========================================================================
+   additions — the only stylesheet that is not the design
+
+   lacuna.css is the mockup's own CSS, copied byte for byte, and it is read
+   only. Two things the mockup never needed are missing from it, because it
+   had no server and never failed:
+
+     1. real uploaded images, since every avatar was initials and every
+        attachment was an empty dithered plate
+     2. a form outside the composer, since the mockup opens already logged in
+        and has no register or login screen
+
+   ! every value below is taken from an existing rule in lacuna.css or from a
+   ! token it already defines. nothing here invents a colour, a font or a
+   ! spacing step, and nothing overrides a rule the design wrote — these only
+   ! cover selectors lacuna.css has no opinion about.
+   ? kept as a separate file so the design stays byte for byte what the mockup
+   ? had, and so this whole addition is one deletable file.
+   =========================================================================== */
+
+/* --- 1. uploads ----------------------------------------------------------
+   the design sizes .av and .plate .img already; these only teach an <img>
+   to sit inside them. the squares, borders and heights stay the design's.   */
+
+.av > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* the dithered gradient stays underneath, so a slow or broken image degrades
+   back to exactly what the mockup drew rather than to a white box */
+.plate .img > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --- 2. the auth card's form ---------------------------------------------
+   ! the design's idiom for a text input is a BORDERED CONTAINER holding a
+   ! BORDERLESS, TRANSPARENT input — see .search, .chat__in and .compose
+   ! .field in lacuna.css. every value below is lifted from .search, so a
+   ! register field is built the same way a find box is.
+   ? scoped under .authform so it cannot reach any of the mockup's own
+   ? components, which already have their own input rules.                  */
+
+.authform .field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* the label sits above its input rather than inline, which is the only
+   departure, and it is forced: .lbl is an inline span and a stacked form
+   needs it on its own line */
+.authform .field > .lbl {
+  display: block;
+  margin-bottom: 5px;
+}
+
+/* border, background and padding are .search's, exactly */
+.authform .field input,
+.authform .field textarea,
+.authform .field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg-sunk);
+  padding: 7px 10px;
+  outline: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+
+/* about_me is prose, so it gets the composer's sans face and line height */
+.authform .field textarea {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 56px;
+}
+
+.authform .field input::placeholder,
+.authform .field textarea::placeholder {
+  color: var(--ink-ghost);
+}
+
+/* the focus ring is .btn's hover border, the brightest line the design uses
+   for an interactive edge */
+.authform .field input:focus,
+.authform .field textarea:focus,
+.authform .field select:focus {
+  border-color: var(--line-strong);
+}
+
+/* a date input draws its own calendar glyph dark on dark; this is the one
+   place a filter is unavoidable, and it only inverts the browser's own icon */
+.authform .field input[type='date']::-webkit-calendar-picker-indicator,
+.authform .field input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+
+/* a field error, in the design's only red */
+.authform .field-error {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--red);
+}
+
+/* an inline link inside body copy.
+   ! the design's .link is scoped to `.chrome .link` — it has no general purpose inline link
+   ! style, because the mockup never had a sentence with a link in it. outside the chrome an
+   ! <a> therefore falls back to the browser's blue underline, which is the one thing in the
+   ! whole interface that is not the design
+   ? the rule below is .chrome .link verbatim, with --ink-dim in place of --ink-faint so it is
+   ? legible against body copy rather than against the chrome strip, and the same --ink hover.
+   ? the accent is deliberately not used here: the tokens call it "used sparingly" */
+.authform a,
+.note-txt a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-strong);
+  transition: color 0.12s;
+}
+
+.authform a:hover,
+.note-txt a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink-faint);
+}

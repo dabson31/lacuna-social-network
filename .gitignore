@@ -19,4 +19,8 @@ src/server/data/*.db
 unmarshal/
 
 src/server/data/*.db*
-Docs/index*.html
+Docs/*.html
+
+# next build output
+src/web/.next/
+src/web/next-env.d.ts

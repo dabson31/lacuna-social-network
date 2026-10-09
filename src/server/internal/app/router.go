@@ -97,6 +97,7 @@ func mountPosts(mux *http.ServeMux, d Dependencies, s shared) {
 	mux.Handle("POST /api/posts", s.requireAuth(h.Create))
 	mux.Handle("GET /api/posts", s.requireAuth(h.Feed))
 	mux.Handle("GET /api/posts/{id}", s.requireAuth(h.Get))
+	mux.Handle("DELETE /api/posts/{id}", s.requireAuth(h.Delete))
 	mux.Handle("GET /api/users/{id}/posts", s.requireAuth(h.ByAuthor))
 
 	mux.Handle("POST /api/posts/{id}/comments", s.requireAuth(h.CreateComment))
