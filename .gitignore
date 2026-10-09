@@ -19,3 +19,4 @@ src/server/data/*.db
 unmarshal/
 
 src/server/data/*.db*
+Docs/index.html
