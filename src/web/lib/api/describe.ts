@@ -71,7 +71,15 @@ export function describeError(e: unknown): ErrorFace {
     case 400:
       return { ...base, kind: e.fields ? 'fields' : 'notice', title: 'that request was not valid', retryable: false }
 
+    //! two very different 401s, and the code is what tells them apart. "unauthenticated" means
+    //! the cookie is gone and every page on screen is stale. "invalid_credentials" is the login
+    //! form being answered — nothing ended, the password was simply wrong. mapping both to
+    //! "your session ended" tells somebody who just mistyped that they were logged out of a
+    //! session they never had
     case 401:
+      if (e.code === 'invalid_credentials') {
+        return { ...base, kind: 'notice', title: 'that did not match', retryable: false }
+      }
       return { ...base, kind: 'auth', title: 'your session ended', detail: 'log in again to continue.', retryable: false }
 
     //! 403 is the only status this api uses to say "you are logged in and still may not". it

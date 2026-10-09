@@ -23,6 +23,11 @@ export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
   onUnauthorized = fn
 }
 
+/** the two endpoints whose 401 is an answer rather than a dead session */
+function isAuthProbe(path: string): boolean {
+  return path === '/api/auth/login' || path === '/api/auth/me'
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -42,7 +47,11 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const body = await readErrorBody(res)
-    if (res.status === 401 && onUnauthorized) onUnauthorized()
+    //! a 401 normally means the cookie died, so the handler clears the session and redirects.
+    //! the two auth endpoints are the exception: login answering 401 is it doing its job, and
+    //! `me` answering 401 on a cold load is just "nobody is logged in". firing the global
+    //! handler for those turns an ordinary wrong password into a session-expired redirect
+    if (res.status === 401 && onUnauthorized && !isAuthProbe(path)) onUnauthorized()
     throw new ApiError(res.status, body)
   }
 
