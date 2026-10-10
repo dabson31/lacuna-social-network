@@ -10,7 +10,6 @@ import { useToast } from '@/components/ui/Toast'
 import { handle } from '@/lib/utils/identity'
 
 /**
- * the thin always-on strip.
  * ! logout lives here and nowhere else. the subject wants it "available at all times", and a
  * ! layout is the only way to make that structural instead of a thing you remember to add to
  * ! each new route. same reasoning as the notification badges
@@ -26,14 +25,12 @@ export function Chrome() {
   const toast = useToast()
   const [clock, setClock] = useState('--:--:--')
 
-  //? the clock is the one genuinely live readout in the mockup's chrome, so it stays live.
+  //? the clock is the one genuinely live readout in the mockups chrome, so it stays live
   //? it starts as the placeholder so the server render and the first client render agree
   useEffect(() => {
     const tick = () => {
       const d = new Date()
-      setClock(
-        [d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()].map((n) => String(n).padStart(2, '0')).join(':'),
-      )
+      setClock([d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds()].map((n) => String(n).padStart(2, '0')).join(':'))
     }
     tick()
     const id = setInterval(tick, 1000)
@@ -77,9 +74,7 @@ export function Chrome() {
       </span>
       <div className="spacer" />
       <span className="hide-sm">
-        socket{' '}
-        <b style={{ color: status === 'open' ? 'var(--acid)' : 'var(--red)' }}>{sockLabel}</b> ·{' '}
-        <b>{rtt === null ? '--' : `${rtt}ms`}</b>
+        socket <b style={{ color: status === 'open' ? 'var(--acid)' : 'var(--red)' }}>{sockLabel}</b> · <b>{rtt === null ? '--' : `${rtt}ms`}</b>
       </span>
       <div className="sep hide-sm" />
       <span className="mono">{clock}&nbsp;UTC</span>

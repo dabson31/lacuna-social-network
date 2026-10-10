@@ -1,5 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
+// next/router is the pages-router hook and it throws "NextRouter was not mounted" inside the app router, which is a runtime failure rather
+import { useRouter } from 'next/navigation'
 import { SessionProvider, useSession } from '@/lib/session/SessionProvider'
 import { SocketProvider } from '@/lib/realtime/SocketProvider'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -38,6 +41,18 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 function Shell({ children }: { children: React.ReactNode }) {
   const { state } = useSession()
 
+  const router = useRouter()
+
+  //! nobody un-authenticated stays inside main
+  //! this retarded ass implemention fucks somethign and makes it infinitely load
+  //! a browser holding a cookie whose session row is gone
+  //! without this, it would try reading the session forever
+  //
+  //? the main issue was that it would render before logging you out
+  useEffect(() => {
+    if (state.status === 'anonymous') router.replace('/login')
+  }, [state.status, router])
+
   return (
     <div className="shell">
       <Chrome />
@@ -45,12 +60,18 @@ function Shell({ children }: { children: React.ReactNode }) {
         <RailLeft />
         <main className="main">
           <MainHead />
+
           {/*
-            ! three session states, and loading is its own branch. collapsing it into anonymous
-            ! is the bug where a reader with a perfectly good cookie watches the page flash a
-            ! redirect on every hard refresh, because `me` has not answered yet
+            !
+            ! {state.status === 'loading' ? <Loading label="reading session…" /> : children}
+              because signOut() is synchronous and
           */}
-          {state.status === 'loading' ? <Loading label="reading session…" /> : children}
+
+          {/*
+            ! children render onyl when there is a user, which is exactly what useUser()
+            ? somebody with a good cookie must not vbe redirected   
+          */}
+          {state.status === 'authenticated' ? children : <Loading label={state.status === 'loading' ? 'reading session…' : 'closing session…'} />}
         </main>
         <RailRight />
       </div>

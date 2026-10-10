@@ -25,7 +25,8 @@ version of everything below.
 10. [`pkg/db/` and `data/`: the two folders shaped by outside forces](#10-pkgdb-and-data-the-two-folders-shaped-by-outside-forces)
 11. [The frontend: the same idea, different axis](#11-the-frontend-the-same-idea-different-axis)
 12. [`shared/`: the seam between two languages](#12-shared-the-seam-between-two-languages)
-13. [Where the code actually is right now](#13-where-the-code-actually-is-right-now)
+13. [Frameworks: what each one is actually doing](#13-frameworks-what-each-one-is-actually-doing)
+14. [Where the code actually is right now](#14-where-the-code-actually-is-right-now)
 
 ---
 
@@ -660,34 +661,38 @@ and the `fs.FS` rejects `..`, so the handler cannot be walked out of the folder
 
 ```
 src/web/
-├── app/            # App Router — URLs only
-│   ├── (auth)/     #   login, register
-│   ├── (main)/     #   feed, profile/[userId], groups/[groupId], chat/[conversationId], notifications
-│   └── api/        #   optional same-origin BFF
-├── features/       # ← mirrors internal/modules/ one for one
+├── app/                      # App Router — URLs only, 14 routes
+│   ├── layout.tsx            #   <html>, the two stylesheets, the pre-paint scheme script
+│   ├── error.tsx             #   root error boundary
+│   ├── (auth)/               #   login, register — a bare centred card
+│   └── (main)/               #   feed, profile/[userId], directory, groups/[groupId],
+│                             #   groups/[groupId]/chat, events, chat/[conversationId],
+│                             #   notifications — all inside the shell
+├── features/                 # ← mirrors internal/modules/ one for one
 │   └── auth/ profile/ follows/ posts/ groups/ chat/ notifications/
-│       ├── components/   hooks/   api.ts   types.ts
+│       ├── api.ts            #   the calls this feature makes
+│       ├── components/       #   feature-specific UI
+│       └── hooks/            #   feature-specific state
 ├── components/
-│   ├── ui/         # primitives: Button, Modal, Avatar
-│   └── layout/     # shell: Navbar, Sidebar, NotificationBell
+│   ├── ui/                   # domain-free: Avatar, Empty, ErrorView, NavButton, Toast
+│   └── layout/               # the shell: Chrome, RailLeft, RailRight, StatusBar, the panels
 ├── lib/
-│   ├── api/        # fetch wrapper
-│   ├── realtime/   # WebSocket client
-│   ├── session/    # reading session state
-│   └── utils/
-├── hooks/          # genuinely global hooks
-└── middleware.ts   # route guard — framework requires this exact location
+│   ├── api/                  # client.ts, errors.ts, describe.ts, useFetch.ts
+│   ├── realtime/             # SocketProvider.tsx — one socket for the whole app
+│   ├── session/              # SessionProvider.tsx — who is logged in
+│   └── utils/                # identity.ts, time.ts, count.ts
+├── hooks/                    # genuinely global: useDebounced, usePrefersReducedMotion
+├── styles/                   # lacuna.css (the design) + additions.css (the only exception)
+└── middleware.ts             # route guard — framework requires this exact location
 ```
 
-> **Status:** every directory above exists and every leaf is a `.gitkeep`. There is no
-> `package.json`, no `middleware.ts`, no component. The plan folder declares the frontend out of
-> scope for all nine backend phases. What follows is therefore the *intent* of the layout — useful
-> because the folders are already committed, but none of it is running yet.
+The seven `features/` names are the seven `internal/modules/` names, with the one deliberate
+rename: the server's `users` is the web's `profile`, because that is what the audit and the UI
+both call it and **a folder should be named after the thing on screen**.
 
 ### `app/` is routing; `features/` is the application
 
-The most important rule on this side. Files in `app/` stay short: read the params, check auth,
-compose components from `features/`, stop.
+Files in `app/` read the params, check the session, compose components from `features/`, stop.
 
 **Why.** `app/`'s shape is dictated by URLs, and URLs change. Moving `/groups/[id]` to `/g/[slug]`
 should be a folder rename, not a code migration. The second reason matters more day to day: a
@@ -696,53 +701,164 @@ without an import that looks wrong. That is the standard failure mode of App Rou
 the fix is structural rather than disciplinary.
 
 `(auth)` and `(main)` are route groups: parentheses mean they do not appear in the URL. They exist
-so the two halves of the app can have different layouts — a bare centred card for login, the full
-shell for everything else. This is also how a requirement gets enforced by structure: the audit
-wants notifications visible **on every page**, so the bell goes in `(main)/layout.tsx` once and
-cannot be forgotten on a new page.
+so the two halves of the app can have different layouts, and that is also how a requirement becomes
+structural rather than remembered. The audit wants notifications visible **on every page**, so the
+Pending panel and the logout control live in `(main)/layout.tsx` once and cannot be forgotten on a
+new route.
 
-### `features/` mirrors `internal/modules/`
+That layout also enforces the session invariant, and the way it does so is worth recording because
+getting it wrong broke logout:
 
-The same seven names on both sides, so a change request maps to one folder per side. "Group events
-can be edited" means `internal/modules/groups/` and `features/groups/` — and you know that before
-opening the repo.
+```tsx
+{state.status === 'authenticated' ? children : <Loading label={...} />}
+```
+[`(main)/layout.tsx:74`](../src/web/app/%28main%29/layout.tsx#L74)
 
-The one rename is deliberate: the server's `users` is the web's `profile`, because that is what both
-the audit and the UI call it, and **a folder should be named after the thing on screen**.
+Children render **only** when there is a user, because that is exactly what `useUser()` promises
+its callers and exactly what it throws over. An earlier version gated on "not loading", which let
+the third state through: `signOut()` flips the session to `anonymous` synchronously while
+`router.replace('/login')` is still in flight, React re-renders in the gap, and the first line of
+the page calls `useUser()`. The error boundary then replaced the route before the navigation
+landed. The race is not winnable by reordering, because `signOut()` is synchronous and navigation
+never is — **gating the render removes the race instead of betting on it.**
 
 ### `components/ui/` versus `features/*/components/`
 
 A component belongs in `components/ui/` only when it is **generic — when it has no idea what a post
-or a group is**. `Modal` qualifies. `PostCard` does not, so it lives in
+or a group is**. `Empty`, `Toast` and `NavButton` qualify. `PostCard` does not, so it lives in
 `features/posts/components/`.
 
-The test: **if it imports a feature type, it is not a primitive.** Getting this wrong in the
-permissive direction is what turns a shared components folder into a 150-file directory that
-everything imports and nobody can change safely.
+The test: **if it imports a feature type, it is not a primitive.** `Avatar` sits right on the line —
+it takes a name and an optional path, not a `User`, which is what keeps it in `ui/`.
 
 ### `lib/` is infrastructure, not helpers
 
 Something in `lib/` **owns a concern**: HTTP transport, socket lifecycle, session reading. It is not
-a bucket for loose functions — that is `lib/utils/`, and it should stay small.
+a bucket for loose functions — that is `lib/utils/`, and it stays small.
 
-- **`lib/api/`** — one fetch wrapper. It sets `credentials: "include"` (**without which the session
-  cookie the entire audit depends on is never sent**), prefixes the API base URL, and normalises
-  non-2xx responses into one typed error. Because `httpx` guarantees a single envelope server-side,
-  this is one parser. Every feature's `api.ts` calls through it, so changing auth handling or error
-  format is one edit.
-- **`lib/realtime/`** — one WebSocket connection for the whole app, shared by chat *and*
-  notifications, with reconnect and backoff. **This is where TypeScript earns its place:** the server
-  sends a tagged union of event types over a single socket, and a discriminated union on `type` makes
-  the client's dispatch exhaustive at compile time. Add a server event and forget the client branch,
-  and the build fails instead of the feature silently doing nothing.
-- **`middleware.ts`** — checks the session cookie and redirects unauthenticated users away from
-  `(main)` before any page renders. It is at the `web/` root because Next.js requires that exact
-  location. **It is a UX guard, not a security boundary** — the Go server re-checks the session on
-  every request, and `RequireAuth` is the only thing actually protecting anything. Treating
-  `middleware.ts` as authorization is the classic mistake here, and §2 is why the folder layout makes
-  it obvious: `web/` owns no state, so it cannot be authoritative about anything.
-- **`app/api/`** — optional. A same-origin proxy keeps cookies first-party and hides the Go server's
-  URL from the browser. Left empty; delete it if you call Go directly.
+**`lib/api/client.ts`** — the only `fetch` in the application. One line is the reason it exists:
+
+```ts
+const res = await fetch(`${API_BASE}${path}`, { ...init, credentials: 'include' })
+```
+[`client.ts:40`](../src/web/lib/api/client.ts#L40)
+
+The session cookie is `HttpOnly` and scoped to `:8080` while the page is on `:3000`. Without
+`credentials: "include"` the browser attaches nothing and every authenticated route answers 401
+while the request looks perfectly correct in the network tab. It is set here, once, where no
+feature can forget it.
+
+Two other things this file settles for everyone. `form()` deliberately sets **no** `Content-Type`,
+because the browser has to generate the multipart boundary itself — a hand-written
+`multipart/form-data` has no boundary and `ParseMultipartForm` answers *"expected a
+multipart/form-data body"*, the most misleading error in the API. And a 204 returns early rather
+than calling `res.json()`, because 204 is the success case for roughly fifteen endpoints and
+`json()` on an empty body throws.
+
+**`lib/api/describe.ts`** — one error taxonomy for the whole app.
+
+```ts
+export function describeError(e: unknown): ErrorFace
+```
+[`describe.ts:42`](../src/web/lib/api/describe.ts#L42)
+
+It returns data, never JSX, so the mapping is testable and the drawing stays in
+`components/ui/ErrorView.tsx` — the same split as handlers and services on the Go side. Every page
+that can fail renders `<ErrorView error={e} onRetry={refetch} />` and nothing else, which means no
+page ever writes an `if (status === 403)` of its own:
+
+| status | shape | where it lands |
+|---|---|---|
+| 0 unreachable, 5xx | `notice` | the red `.notice` bar, with a retry |
+| 400 / 409 / 413 / 415 with `fields` | `fields` | under the input the server named |
+| 401 `invalid_credentials` | `notice` | the login form, in place |
+| 401 `unauthenticated` | `auth` | session cleared, redirect |
+| 403 | `notice` | in place, no retry — asking again will not help |
+| 404 | `empty` | the `.empty` block |
+
+The 404 copy never says "deleted". A 404 from this API means *not found **or** not visible to you*
+— that is the documented behaviour on posts, profiles, groups and follow requests — so "deleted"
+would be a lie every time a stranger opens an `almost_private` post.
+
+**`lib/session/SessionProvider.tsx`** — three states, not two:
+
+```ts
+export type SessionState =
+  | { status: 'loading' } | { status: 'authenticated'; user: User } | { status: 'anonymous' }
+```
+[`SessionProvider.tsx:14`](../src/web/lib/session/SessionProvider.tsx#L14)
+
+A boolean cannot tell "not yet known" from "not logged in", which is the bug where a reader with a
+perfectly good cookie watches the login page flash on every hard refresh.
+
+**`lib/realtime/SocketProvider.tsx`** — one connection for the whole app, shared by chat *and*
+notifications. Two sockets would be two reconnect loops and two sets of duplicate frames, and the
+hub keys connections by user id so it would hold both. **This is where TypeScript earns its place:**
+
+```ts
+default: return assertNever(frame)
+```
+[`SocketProvider.tsx:68`](../src/web/lib/realtime/SocketProvider.tsx#L68)
+
+Add a variant to `ServerFrame` and forget the branch, and the build fails instead of the feature
+silently doing nothing.
+
+The client also never treats the socket as the source of truth. `chat/service.go` commits the row
+and *then* pushes, best effort, so REST is the record and the socket is a live upgrade on top of
+it. `POST /api/messages` returns 201 with the saved row **and** the socket pushes the same row, so
+the sender receives their own message twice by design and dedupes on `id`.
+
+**`middleware.ts`** — checks that the cookie exists:
+
+```ts
+const hasSession = Boolean(request.cookies.get('sid')?.value)
+```
+[`middleware.ts:17`](../src/web/middleware.ts#L17)
+
+That is all it can do and all it is for. The sessions table lives in Go and `RequireAuth` re-reads
+it on every single request. **It is a UX guard, not a security boundary** — and §2 is why the layout
+makes that obvious: `web/` owns no state, so it cannot be authoritative about anything. It also
+cannot tell a *valid* cookie from a *stale* one, which is why `(main)/layout.tsx` redirects on
+`anonymous` rather than trusting the guard.
+
+### Two pagination schemes, on purpose
+
+The backend offers both and they are not interchangeable:
+
+| scheme | used by | why |
+|---|---|---|
+| cursor — `before` is a row id | feed, author posts, DM and group history | the list grows at the top |
+| offset — `limit` + `offset` | notifications, the directory | the list is stable and ordered by name |
+
+[`useCursorList.ts:30`](../src/web/features/posts/hooks/useCursorList.ts#L30) implements the first.
+With an offset the page boundary slides as new rows arrive, so you get shown the same post twice and
+miss one; `before` anchors to a row and cannot drift. A short page is the only end-of-list signal
+the API gives — there is no total anywhere — so the UI draws the design's `.eof` marker and never
+claims "page 3 of 9".
+
+Chat inverts it. The store queries `ORDER BY id DESC` to get the most recent page and then calls
+`reverse()` before returning, so the response is already chronological and
+[`useThread.ts`](../src/web/features/chat/hooks/useThread.ts) prepends it unchanged. Reading only
+the `ORDER BY` and reversing again on the client scrambles every page — which it did, once.
+
+### The stylesheet is the design, and one file is not
+
+`styles/lacuna.css` is 2,454 lines lifted byte for byte out of the single-file mockup in `Docs/`.
+It is **read only**. A component that needs a class it does not define is a component drifting from
+the design, and the fix is to re-read the mockup rather than add a rule. That is checkable, and the
+check is one grep of every `className` against every selector.
+
+`styles/additions.css` is the one exception, 262 lines, covering the two things the mockup never
+needed because it had no server and never failed: a real `<img>` inside `.av` and `.plate`, and a
+form outside the composer. Every value in it is lifted from a rule or token `lacuna.css` already
+defines. Keeping it separate rather than appending means the design file stays exactly what the
+mockup had, and the whole addition is one deletable file.
+
+The same discipline produced a class of bug worth naming. Several of the design's rules are scoped
+to an **element**, not a class — `.presence button`, `.seg button`, `.post__who .nm button`,
+`.main__hd .crumb button`. Rendering a Next `<Link>` there produces an `<a>`, which picks up none of
+it and lands as underlined default-blue text. `components/ui/NavButton.tsx` exists for exactly those
+places: a real `<button>` that navigates.
 
 ### Why the two sides are not symmetric
 
@@ -758,66 +874,178 @@ answer "where does this feature live?" with one folder; what is inside matches t
 
 ```
 src/shared/
-├── contracts/    # request/response shapes, the WebSocket event union
-└── constants/    # values both sides must agree on
+├── contracts/    # users, follows, posts, groups, chat, notifications, ws
+└── constants/    # domain.ts, ws.ts
 ```
 
-> **Status:** `.gitkeep` only.
-
 `constants/` holds the values where a typo is a **silent** bug rather than a loud one: post privacy
-(`public` / `almost_private` / `private`), follow states (`pending` / `accepted`), notification
-types, WebSocket event names. These strings are written by Go and read by TypeScript. Keep them in
+(`public` / `almost_private` / `private`), follow states, group membership states, notification
+types, WebSocket frame names. These strings are written by Go and read by TypeScript. Keep them in
 one place and a rename is caught by the compiler; duplicate them and it is caught by a user staring
 at an empty feed.
 
-Those exact strings are already live in the backend — `"pending"` and `"accepted"` appear as literals
-in `follows/service.go` and `follows/store.go`. That is the duplication `constants/` is meant to
-absorb.
+`contracts/` is hand-written TypeScript, one file per module, each mirroring the Go struct's JSON
+tags one for one. The rule that makes it safe: **every pointer field in the Go struct is a nullable
+column and must be `| null` here.** Get one wrong and you crash on the single user who skipped their
+nickname, which is the least reproducible bug shape there is.
 
-`contracts/` is hand-written TypeScript by default: the API is small enough that code generation is
-overhead. Generate from an OpenAPI spec once hand-drift actually bites — adding a build step on day
-one to an API you are changing hourly costs more than it saves.
+`contracts/ws.ts` is the load-bearing file. It carries the tagged union the socket speaks, plus
+`assertNever` and `parseServerFrame` — one real validation at the boundary, because anything off a
+socket is untrusted input. The two message types are declared there and **re-exported** by
+`contracts/chat.ts` rather than redeclared, because a row fetched from history and a frame pushed
+over the socket are deliberately the same shape and two declarations would drift.
+
+Generation from an OpenAPI spec is still the escape hatch if hand-drift bites. It has not.
 
 `shared/` is copied into the **web** Docker build, which is the other reason it is top-level rather
 than nested under either side.
 
 ---
 
-## 13. Where the code actually is right now
+## 13. Frameworks: what each one is actually doing
 
-The tree is complete; the code is not. Knowing the difference keeps you from reading an empty file
-as a design statement.
+Seven dependencies across both languages. The short version is that this project uses frameworks for
+transport and rendering and almost nothing else — the rules, the SQL, the state and the styling are
+all first-party on purpose.
 
-**Working end to end** — config, logger, `sqlite.Open`/`Migrate`, `httpx`, `storage`, `session`,
-`password`, the full middleware chain, all fifteen migration pairs, `cmd/server`, `cmd/migrate`, and
-the `auth` module (register / login / logout / me) plus `/api/health` and `/uploads/{name}`.
-That is Phases 1–3 of the plan.
+### Go — four dependencies
 
-**Written but not reachable** — `modules/follows` is complete across all four files (handler,
-service, store, model), but [`router.go:45`](../src/server/internal/app/router.go#L45) is still
-`func mountFollows(...) {}`. The module compiles and nothing routes to it. Wiring it is the
-remaining step of Phase 4, and it is a good illustration of §3: the composition root is the single
-place that decides a module is live, so "written" and "serving traffic" are genuinely separate
-states.
+| package | what it does here | what it is *not* doing |
+|---|---|---|
+| **stdlib `net/http`** | the entire router and server | — |
+| **`gorilla/websocket`** | the HTTP→WS upgrade and frame read/write | it does not hold connections; the hub does |
+| **`golang-migrate/migrate`** | applies `.up.sql` at boot, `cmd/migrate` for up/down/force | no schema DSL, the migrations are plain SQL |
+| **`mattn/go-sqlite3`** | the driver | not an ORM; every query is hand-written in a `store.go` |
+| **`x/crypto/bcrypt`** | hash and compare | two functions, isolated in `platform/password` |
 
-**Package declaration only** — `modules/groups` (5 files) and `modules/chat` (4 files, including the
-`ports.go` reserved for the `FollowChecker` interface of §8). `modules/chat/model.go` is the
-exception: its three types are written.
+**There is no router library, and that is a Go 1.22 decision rather than asceticism.** The stdlib
+`ServeMux` now takes a method and wildcards in the pattern itself, which is the only thing a
+third-party router was ever needed for:
 
-**Still `.gitkeep`** — `modules/users`, `modules/posts`, `modules/notifications`,
-`platform/events`, `platform/realtime`, `internal/testutil`, `pkg/db/seed`, and the whole of
-`src/web/` and `src/shared/`.
+```go
+mux.Handle("POST /api/groups/{id}/requests/{userID}/accept", s.requireAuth(h.AcceptRequest))
+```
+[`router.go:127`](../src/server/internal/app/router.go#L127)
 
-Two consequences worth stating plainly:
+Two path variables, a method constraint, and `r.PathValue("userID")` to read them back. Adding
+chi or gorilla/mux would buy middleware chaining, which [§6](#6-how-a-request-actually-travels)
+already does with four structs that each hold a `Next`.
 
-- **The event bus does not exist yet**, so §7.3 describes a mechanism that is currently a comment at
-  `follows/service.go:35-37` and a specification in `plan/08`. The rule it enforces is nonetheless
-  already satisfied — no module imports another, because there is nothing to import yet. The bus is
-  what keeps that true once `notifications` exists.
-- **There are no tests.** `testutil/` is empty and no `*_test.go` file exists. The plan calls for
-  `service_test.go` beside each `service.go`, and `plan/07` specifically asks for
-  `go test -race ./...` on the hub — the race detector finds the hub bugs that otherwise appear as a
-  crash during the audit.
+**`gorilla/websocket` is used as narrowly as possible.** It owns the handshake and the byte frames;
+everything above that is ours. `platform/realtime` holds the connection registry, the per-user
+fan-out, the read and write pumps and the ping timer, and it is deliberately ignorant of what a
+"message" is — `chat` and `notifications` define their own frame types and encode through
+`realtime.Encode`. That is what keeps the transport a transport. The one place the library's default
+would have been a security bug is `CheckOrigin`, which returns true for everything out of the box:
+that is CSRF over a socket, because the WebSocket handshake is not subject to the same-origin policy
+the way `fetch` is, so it is replaced with an explicit allow-list.
+
+### TypeScript and the web — three runtime dependencies
+
+`next`, `react`, `react-dom`. That is the whole `dependencies` block; `typescript` and the `@types`
+packages are dev-only.
+
+**Next.js (App Router)** is used for five specific things and nothing else:
+
+1. **File-system routing** — 14 routes, one folder each, so a URL change is a folder rename.
+2. **Route groups** — `(auth)` and `(main)` give the two halves different layouts without appearing
+   in the URL, which is what makes "notifications on every page" structural.
+3. **Nested layouts and error boundaries** — `layout.tsx`, `error.tsx` and `not-found.tsx` per
+   segment, so the shell is mounted once and a crash inside a route keeps the navigation around it.
+4. **`middleware.ts`** — the pre-render cookie check, at the root because the framework requires
+   that exact path.
+5. **`output: 'standalone'`** — the Docker runtime stage copies a minimal tree with its own
+   `server.js` instead of all of `node_modules`.
+
+What it is deliberately **not** used for is data fetching. Every page is a client component and
+every call goes through `lib/api`. The reason is concrete rather than stylistic: the session is an
+`HttpOnly` cookie on a different origin, and the browser is the only thing holding it. A server
+component would have to forward `Cookie` by hand on every call, and this app has no SEO and no
+first-paint budget to justify that.
+
+**React 19** is used as hooks and components. No class components, no portals, no `Suspense` for
+data — the single `Suspense` boundary in the app wraps `useSearchParams` on the login page because
+that hook opts a route into client rendering.
+
+**TypeScript** is on `strict`. The place it pays for itself is the socket union described in §11;
+the place it pays second is `shared/contracts/`, where `| null` on every nullable column turns a
+class of runtime crash into a compile error.
+
+### What is absent, and why
+
+This doc already has a habit of explaining a layout by what is missing
+([§9](#9-modules-versus-platform-the-deciding-test)). The same applies to the dependency list.
+
+| not used | what it would have done | why not |
+|---|---|---|
+| an ORM | generate the SQL | the visibility predicate in `posts/store.go` is a four-branch `EXISTS` chain that has to run **in the database** so pagination stays correct. Expressing that through an ORM is harder to read than the SQL |
+| a router library | method + path params | the stdlib does both since Go 1.22 |
+| TanStack Query / SWR | caching, revalidation | the one thing a cache would buy is a live notification count, and the socket already keeps that live. `useFetch` is forty lines |
+| Redux / Zustand | global state | there are four contexts — session, socket, badges, toast — and everything else is local to a page |
+| Tailwind / CSS modules | styling | the design arrived as one finished stylesheet. Tailwind would mean deleting it, CSS modules would mean renaming 400 selectors for nothing |
+| a component library | buttons, modals, inputs | the design **is** the component library. Importing MUI would mean overriding it back to this |
+| a form library | validation, field state | the server is the validator. `httpx.ValidationErrors` returns one message per field name and the form prints what it is handed, so duplicating the rules client-side would create two sets that drift |
+
+The pattern across the whole table is the same: a dependency is worth taking when it owns something
+genuinely hard and external — a wire protocol, a C database driver, a password KDF, a rendering
+runtime. It is not worth taking to avoid writing forty lines you then have to configure anyway.
+
+---
+
+## 14. Where the code actually is right now
+
+Both sides are built and running against each other. What follows is what is verified, what is
+assumed, and what is known to be broken.
+
+**Backend — complete.** All nine phases. Every route in `plan/api-contract.md` is mounted in
+`router.go` and answering: auth, users, follows, posts, groups, chat, notifications, `/ws`,
+`/api/health` and `/uploads/{name}`. The event bus has four subscribers and the hub is wired into
+both `chat` and `notifications`, so all four required notifications are stored **and** pushed live.
+
+Three additions were made after the frontend existed, each because the design's own UI needed
+something the API did not expose:
+
+| addition | files | reason |
+|---|---|---|
+| `viewer_count` on `posts.Post` | `models.go`, `store.go` | the private-post tag reads `selected · N` |
+| `DELETE /api/posts/{id}` | `store.go`, `service.go`, `handler.go`, `router.go` | the design's `withdraw` action had no endpoint |
+| group chat entry points | frontend only | the rooms already existed; nothing could reach them |
+
+The delete is author-scoped in the `WHERE` rather than in a preceding `SELECT`, so there is no
+window between "is it yours" and "delete it", and it unlinks the post's image **and** every comment
+image before the cascade removes the rows that name them.
+
+**Frontend — complete.** 14 routes, the ported stylesheet, the fetch wrapper and error model, the
+session and socket providers, all seven feature folders, `middleware.ts`, and `src/web/Dockerfile`
+with the frontend service wired into `docker-compose.yml`. `tsc --noEmit` is clean on `strict`.
+
+**Verified end to end, in a browser against the running backend:** register with and without the
+three optional fields, the full 3×3 post-visibility matrix, cursor pagination with no overlap or
+gap, the follow request round trip, group invite and join-request flows, RSVP, the `403
+chat_not_allowed` gate between two unconnected users, emoji round-tripping, and a DM and a
+`notification.new` arriving **live over the socket** while a page sat open. Responsive folds
+correctly at 1180px and 390px with no horizontal overflow.
+
+### Known gaps, stated plainly
+
+- **There are no tests.** `testutil/` is empty and no `*_test.go` exists. The plan calls for
+  `service_test.go` beside each `service.go`, and `plan/07` asks for `go test -race ./...` on the
+  hub specifically — the race detector finds the hub bugs that otherwise surface as a crash during
+  an audit. This is the largest outstanding item.
+- **The frontend Docker image has never been built.** `docker compose config` validates and the
+  exact runtime layout was reproduced and run by hand, but no daemon was available to build it.
+- **The migrations path is broken on Windows.** [`sqlite.go:87`](../src/server/pkg/db/sqlite/sqlite.go#L87)
+  builds `"file://" + abs`, which on Windows yields `file://C:\Users\...` — the URL parser reads
+  `C` as the host and `:\Users\...` as the port and rejects it. It works on Unix only because an
+  absolute path there happens to start with `/`. Confirmed on a real machine; `docker compose up`
+  is unaffected.
+- **The socket retries forever after a 401.** A handshake refused before the upgrade never becomes a
+  WebSocket, so the browser reports close code 1006 — indistinguishable from a dropped network — and
+  the `giveUp` check keys on 1008, which never arrives. Noise rather than a broken flow.
+- **A few synthetic readouts stay synthetic**, and keep the design's own `sim` tag: Carrier, the
+  Loop player, segment and node identifiers, and the presence dots. The hub knows who is connected
+  through `IsOnline`, but no presence frame is ever sent — `chat/service.go` leaves it as a todo —
+  so the client has no way to learn it.
 
 ### The shortest version of all of it
 
@@ -830,3 +1058,5 @@ Two consequences worth stating plainly:
 6. `components/ui/` is domain-free. If it imports a feature type, it is not a primitive.
 7. Every `.up.sql` has a `.down.sql`.
 8. Nothing lands in `utils/` that could name its own concern.
+9. One `fetch`, one error taxonomy, one socket.
+10. `lacuna.css` is the design and is read only. A class it does not define is drift.

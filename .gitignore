@@ -24,3 +24,6 @@ Docs/*.html
 # next build output
 src/web/.next/
 src/web/next-env.d.ts
+
+# typescript's incremental build cache, regenerated on every tsc run
+src/web/*.tsbuildinfo

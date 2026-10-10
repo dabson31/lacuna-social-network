@@ -1,4 +1,4 @@
-# Keep the build context small and never ship local state into the image.
+# keep the build context small and never ship local state into the image
 .git
 **/node_modules
 # next's build output, the image builds its own
@@ -9,3 +9,5 @@ src/server/data/
 *.db*
 # local secrets; real values come from compose / the environment
 .env
+# typescript's build cache; the image compiles from source
+**/*.tsbuildinfo
