@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { usePathname } from 'next/navigation'
 import { WsFrame } from '@shared/constants/ws'
 import { NOTIFICATION_LABEL } from '@shared/constants/domain'
-import type { Feed, NotificationRow } from '@shared/contracts/notifications'
+import type { Feed, GroupUnread, NotificationRow } from '@shared/contracts/notifications'
 import type { Inbox } from '@shared/contracts/chat'
 import type { Group } from '@shared/contracts/groups'
 import * as api from '@/lib/api/client'
@@ -37,6 +37,17 @@ interface Badges {
   unreadGroups: number
   /** groups the caller is a member of, for the tile */
   groups: number
+  /**
+   * unresolved notifications filed under a group, one row per group.
+   * ! a fourth number rather than part of `pending`, because "how many notices are waiting"
+   * ! and "which group is waiting on me" are different questions. the groups list needs the
+   * ! second one per row, and the nav tile needs its sum
+   * ? only the three group kinds land here, so this sum is a slice of `pending` and not a
+   * ? second count of the same thing. a follow request belongs to no group and never appears
+   */
+  groupPending: GroupUnread[]
+  /** the sum of groupPending, for the Groups tile in the left rail */
+  groupPendingTotal: number
 
   notifications: NotificationRow[]
   inbox: Inbox | null
@@ -50,6 +61,21 @@ interface Badges {
 }
 
 const BadgeContext = createContext<Badges | null>(null)
+
+/**
+ * move one group's tally by `by`, adding the row if it is new and dropping it at zero.
+ * ? a null group means the notification belongs to no group — a follow request — so there is
+ * ? nothing to move, and the list comes back untouched
+ */
+function bumpGroup(list: GroupUnread[], groupId: number | null, by: number): GroupUnread[] {
+  if (groupId === null) return list
+  if (!list.some((g) => g.group_id === groupId)) {
+    return by > 0 ? [...list, { group_id: groupId, unread: by }] : list
+  }
+  return list
+    .map((g) => (g.group_id === groupId ? { ...g, unread: g.unread + by } : g))
+    .filter((g) => g.unread > 0)
+}
 
 export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const { state } = useSession()
@@ -105,14 +131,27 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
    * ! second
    */
   useFrame(WsFrame.NotificationNew, (row) => {
-    setFeed((prev) =>
-      prev === null
-        ? { notifications: [row], unread_count: 1 }
-        : {
-            notifications: [row, ...prev.notifications.filter((n) => n.id !== row.id)],
-            unread_count: prev.unread_count + 1,
-          },
-    )
+    setFeed((prev) => {
+      if (prev === null) {
+        return { notifications: [row], unread_count: 1, group_unread: bumpGroup([], row.group_id, 1) }
+      }
+      /**
+       * ! a repeated action — a follow request sent again after being withdrawn, an invite
+       * ! resent — refreshes the row the server was already holding, so this frame can carry
+       * ! an id this feed already has. replacing the row is right, its entity moved. counting
+       * ! it a second time is not, and neither is a second tick on the group tally
+       * ? the filter below already did the replacing. this only decides whether the row is
+       * ? news or an update of something already counted
+       */
+      const known = prev.notifications.some((n) => n.id === row.id && n.read_at === null)
+      return {
+        notifications: [row, ...prev.notifications.filter((n) => n.id !== row.id)],
+        unread_count: known ? prev.unread_count : prev.unread_count + 1,
+        //? the frame carries group_id for exactly this, so an invite or a new event lights
+        //? up its own group without a refetch
+        group_unread: known ? prev.group_unread : bumpGroup(prev.group_unread, row.group_id, 1),
+      }
+    })
     //! the pop-up half of "a user must be able to see the notifications in every page". the
     //! count and the Pending panel both needed you to be looking at them; this announces
     //! itself. all four required kinds come down this one frame, so one line covers follow
@@ -154,26 +193,33 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     //! has always returned it per room in inbox.groups[].unread — the counter simply stopped
     //! at direct messages, so a room with unread messages lit no badge anywhere
     const unreadGroups = (inbox?.groups ?? []).reduce((n, c) => n + c.unread, 0)
+    const groupPending = feed?.group_unread ?? []
     return {
       pending: feed?.unread_count ?? 0,
       unread,
       unreadGroups,
       groups: groups.filter((g) => g.my_status === 'member').length,
+      groupPending,
+      groupPendingTotal: groupPending.reduce((n, g) => n + g.unread, 0),
       notifications: feed?.notifications ?? [],
       inbox,
       myGroups: groups,
       reloadNotifications,
       reloadInbox,
       reloadGroups,
+      //! the row is looked up before it is dropped, because the group tally has to come down
+      //! with the global one. taking only an id and decrementing `pending` alone is how the
+      //! groups list ends up still showing a number for something already dealt with
       dropNotification: (id) =>
-        setFeed((prev) =>
-          prev === null
-            ? prev
-            : {
-                notifications: prev.notifications.filter((n) => n.id !== id),
-                unread_count: Math.max(0, prev.unread_count - 1),
-              },
-        ),
+        setFeed((prev) => {
+          if (prev === null) return prev
+          const gone = prev.notifications.find((n) => n.id === id)
+          return {
+            notifications: prev.notifications.filter((n) => n.id !== id),
+            unread_count: Math.max(0, prev.unread_count - 1),
+            group_unread: bumpGroup(prev.group_unread, gone?.group_id ?? null, -1),
+          }
+        }),
     }
   }, [feed, inbox, groups, reloadNotifications, reloadInbox, reloadGroups])
 

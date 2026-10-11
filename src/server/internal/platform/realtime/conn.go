@@ -31,7 +31,7 @@ const (
 )
 
 // ! note: a single tab might be a problem
-// gorilla/websocket panics on concurrent writes, and
+// gorilla/websocket panics on concurrent writes
 // for example, a group message arriving while a notification is being delivered
 type Conn struct {
 	hub    *Hub
@@ -58,9 +58,11 @@ func (c *Conn) UserID() int64 { return c.userID }
 // but cant risk a blocked hub
 func (c *Conn) enqueue(frame []byte) {
 	select {
+		//! here, we're sending a connection into the frame
 	case c.send <- frame:
+	
 	case <-c.done:
-		// already closed; nothing to deliver to
+		// the case is done so already closed; nothing to deliver to
 	default:
 		c.log.Warn("ws slow client dropped", "user", c.userID)
 		c.close()
@@ -77,6 +79,7 @@ func (c *Conn) close() {
 	})
 }
 
+//! writing to the socket is done here
 // writePump is the only goroutine that writes to this socket, ever.
 func (c *Conn) writePump() {
 	ticker := time.NewTicker(pingPeriod)

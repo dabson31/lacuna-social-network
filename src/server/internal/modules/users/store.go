@@ -115,17 +115,25 @@ func (s *Store) setPrivacy(ctx context.Context, id int64, isPublic bool) error {
 	return nil
 }
 
-// this matches the query against name, nickname and email where we leave the caller out,
+// this matches the query against name and nickname where we leave the caller out,
+// ! email is deliberately NOT matched. it is not in ListUser either, but a LIKE on it leaks
+// ! the column anyway: a caller who guesses "@gmail.com" or a full address gets a hit, and a
+// ! hit is a yes/no answer about who holds that address. the same answer auth refuses to give
+// ! on purpose, where login returns one error for a wrong email and a wrong password and
+// ! burns the same 50ms either way (auth/service.go) so the response never confirms which
+// ! addresses are registered. matching on it here undid that in a search box
+// ? a user who wants to be findable by something short has a nickname for it, which is public
+// ? by design and is what the directory prints as a handle
 func (s *Store) search(ctx context.Context, viewerID int64, q string, limit, offset int) ([]ListUser, error) {
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, first_name, last_name, nickname, avatar_path, is_public
 		 FROM users
 		 WHERE id <> ?
-		   AND (first_name LIKE ? OR last_name LIKE ? OR nickname LIKE ? OR email LIKE ?)
+		   AND (first_name LIKE ? OR last_name LIKE ? OR nickname LIKE ?)
 		 ORDER BY first_name, last_name
 		 LIMIT ? OFFSET ?`,
-		viewerID, like, like, like, like, limit, offset,
+		viewerID, like, like, like, limit, offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search users: %w", err)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavButton } from '@/components/ui/NavButton'
 import type { GroupPost } from '@shared/contracts/groups'
 import { Avatar } from '@/components/ui/Avatar'
@@ -8,6 +8,7 @@ import { Empty, Loading } from '@/components/ui/Empty'
 import { ErrorView } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
 import { LIMITS, runeLength } from '@/lib/utils/count'
+import { submitOnEnter } from '@/lib/utils/keys'
 import { age } from '@/lib/utils/time'
 import { Attachment } from '@/features/posts/components/Attachment'
 import { Thread } from '@/features/posts/components/Thread'
@@ -35,6 +36,9 @@ export function GroupPostFeed({
   const [open, setOpen] = useState<number | null>(null)
   const [content, setContent] = useState('')
   const [busy, setBusy] = useState(false)
+  //? enter submits through the form rather than through a click, so the handler needs a
+  //? handle on it. same shape as the feed composer, which is the point
+  const formRef = useRef<HTMLFormElement>(null)
   const toast = useToast()
 
   const load = () => {
@@ -45,6 +49,7 @@ export function GroupPostFeed({
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    if (busy) return
     const formEl = e.currentTarget
     const body = new FormData(formEl)
     if (runeLength(content.trim()) === 0 && !(body.get('image') as File | null)?.size) return
@@ -68,7 +73,7 @@ export function GroupPostFeed({
   return (
     <>
       <section className="compose" aria-label="New group post">
-        <form onSubmit={submit}>
+        <form ref={formRef} onSubmit={submit}>
           <div className="row">
             <Avatar name={selfName} path={selfAvatar} size="lg" />
             <div className="field">
@@ -80,6 +85,7 @@ export function GroupPostFeed({
                 maxLength={LIMITS.post}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                onKeyDown={(e) => submitOnEnter(e, formRef.current)}
               />
               <div className="attached" data-open="1" style={{ marginTop: 8 }}>
                 <ImagePicker name="image" label="attach image" />
@@ -87,6 +93,7 @@ export function GroupPostFeed({
               <div className="under">
                 <span className="lbl">visible to members only</span>
                 <div className="spacer" />
+                <span className="lbl">enter sends · shift+enter new line</span>
                 <span className="lbl">
                   {runeLength(content)} / {LIMITS.post}
                 </span>

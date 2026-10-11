@@ -2,13 +2,15 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { MemberStatus } from '@shared/constants/domain'
+import { MemberStatus, NotificationType } from '@shared/constants/domain'
 import type { Group } from '@shared/contracts/groups'
 import { Avatar } from '@/components/ui/Avatar'
 import { Empty } from '@/components/ui/Empty'
 import { useToast } from '@/components/ui/Toast'
 import { useBadges } from '@/components/layout/BadgeProvider'
 import { acceptInvite, createGroup, declineInvite, requestJoin } from '@/features/groups/api'
+import { pendingNotice } from '@/features/notifications/actions'
+import { markRead } from '@/features/notifications/api'
 
 /**
  * browse every group, ported from viewGroups at line 3847.
@@ -16,7 +18,8 @@ import { acceptInvite, createGroup, declineInvite, requestJoin } from '@/feature
  * ! than one plus N. the button comes from those two fields and never from a membership probe
  */
 export default function GroupsPage() {
-  const { myGroups, reloadGroups, inbox } = useBadges()
+  const { myGroups, reloadGroups, inbox, groupPending, groupPendingTotal, notifications, dropNotification } =
+    useBadges()
   const toast = useToast()
   const [open, setOpen] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
@@ -33,6 +36,24 @@ export default function GroupsPage() {
     } finally {
       setBusy(null)
     }
+  }
+
+  /**
+   * answering the invite here answers the one the notices panel is holding, so the row gets
+   * marked read from here too.
+   * ! without this the group keeps a pending number for an invitation already accepted, and
+   * ! the panel keeps offering a join that would now answer 409
+   * ? dropped locally first and marked on the server second, for the same reason
+   * ? resolveNotification does it in that order: the action is the point and the read flag is
+   * ? bookkeeping, so a failed mark must not look like a failed join
+   */
+  const resolveInviteNotice = (groupId: number) => {
+    const row = pendingNotice(notifications, { type: NotificationType.GroupInvite, groupId })
+    if (!row) return
+    dropNotification(row.id)
+    void markRead(row.id).catch(() => {
+      /* the join already landed, and read-all will catch the row */
+    })
   }
 
   const make = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -66,6 +87,17 @@ export default function GroupsPage() {
   const unreadIn = (groupId: number): number =>
     inbox?.groups.find((g) => g.group_id === groupId)?.unread ?? 0
 
+  /**
+   * how many notifications are still waiting on the reader in this group.
+   * ! a different number from unreadIn, and deliberately shown as a different thing. the
+   * ! subject requires notifications and private messages to be distinguishable, so an invite,
+   * ! a join request and a new event count here while room messages count there
+   * ? counted by the server per group, because entity_id means a different table per kind and
+   * ? the client has nothing to resolve an event id to a group with
+   */
+  const pendingIn = (groupId: number): number =>
+    groupPending.find((g) => g.group_id === groupId)?.unread ?? 0
+
   /** the four membership states, each with the one action that applies */
   const actionsFor = (g: Group) => {
     switch (g.my_status) {
@@ -92,14 +124,32 @@ export default function GroupsPage() {
             <button
               className="btn btn--sm"
               disabled={busy === g.id}
-              onClick={() => void act(g, () => acceptInvite(g.id), `joined · ${g.title}`)}
+              onClick={() =>
+                void act(
+                  g,
+                  async () => {
+                    await acceptInvite(g.id)
+                    resolveInviteNotice(g.id)
+                  },
+                  `joined · ${g.title}`,
+                )
+              }
             >
               join
             </button>
             <button
               className="btn btn--sm btn--danger"
               disabled={busy === g.id}
-              onClick={() => void act(g, () => declineInvite(g.id), 'invitation declined')}
+              onClick={() =>
+                void act(
+                  g,
+                  async () => {
+                    await declineInvite(g.id)
+                    resolveInviteNotice(g.id)
+                  },
+                  'invitation declined',
+                )
+              }
             >
               decline
             </button>
@@ -140,7 +190,10 @@ export default function GroupsPage() {
   return (
     <>
       <div className="main__bar">
-        <span className="lbl">{myGroups.length} groups</span>
+        <span className="lbl">
+          {myGroups.length} groups
+          {groupPendingTotal > 0 && ` · ${groupPendingTotal} pending`}
+        </span>
         <div className="spacer" />
         <button className="btn btn--sm" onClick={() => setComposing((v) => !v)}>
           {composing ? 'close' : 'create a group'}
@@ -167,6 +220,7 @@ export default function GroupsPage() {
         {myGroups.map((g) => {
           const isOpen = open === g.id
           const unread = unreadIn(g.id)
+          const pending = pendingIn(g.id)
           return (
             <div className="row-item" key={g.id}>
               <button
@@ -175,8 +229,9 @@ export default function GroupsPage() {
                 aria-controls={`grp-${g.id}`}
                 onClick={() => setOpen(isOpen ? null : g.id)}
               >
-                {/*? the dot the rest of the app uses for the same thing, lit per group */}
-                <span className={unread ? 'dot dot--on' : 'dot dot--idle'} />
+                {/*? the dot the rest of the app uses for the same thing, lit per group, by
+                    either kind of waiting thing */}
+                <span className={unread || pending ? 'dot dot--on' : 'dot dot--idle'} />
                 <Avatar name={g.title} size="sm" />
                 <span className="tx">
                   <span className="nm">
@@ -184,6 +239,7 @@ export default function GroupsPage() {
                     {roleTag(g)}
                     {/*? .row-unread is the stylesheet's own class for exactly this, already
                         used by the dm and group rows on /chat */}
+                    {pending > 0 && <span className="row-unread">{pending} pending</span>}
                     {unread > 0 && <span className="row-unread">{unread} new</span>}
                   </span>
                   <span className="mt">

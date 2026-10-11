@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { MemberStatus } from '@shared/constants/domain'
+import { MemberStatus, NotificationType } from '@shared/constants/domain'
 import type { JoinRequest } from '@shared/contracts/groups'
 import type { ListUser } from '@shared/contracts/users'
 import { Avatar } from '@/components/ui/Avatar'
@@ -26,6 +26,8 @@ import {
   listRequests,
   requestJoin,
 } from '@/features/groups/api'
+import { pendingNotice } from '@/features/notifications/actions'
+import { markRead } from '@/features/notifications/api'
 import { GroupPostFeed } from '@/features/groups/components/GroupPostFeed'
 import { EventCard } from '@/features/groups/components/EventCard'
 import { useEventFanIn } from '@/features/groups/hooks/useEventFanIn'
@@ -37,7 +39,7 @@ export default function GroupPage() {
   const groupId = Number(params.groupId)
   const me = useUser()
   const toast = useToast()
-  const { reloadGroups } = useBadges()
+  const { reloadGroups, notifications, dropNotification } = useBadges()
   const [tab, setTab] = useState<Tab>('posts')
 
   const { data: group, loading, error, refetch } = useFetch(() => getGroup(groupId), [groupId])
@@ -61,6 +63,17 @@ export default function GroupPage() {
     } catch {
       toast('that did not go through')
     }
+  }
+
+  /**
+   * the same rule as on the groups list: whoever answers a notification marks it read, or the
+   * group keeps a pending number for an invitation that has already been dealt with
+   */
+  const resolveInviteNotice = () => {
+    const row = pendingNotice(notifications, { type: NotificationType.GroupInvite, groupId })
+    if (!row) return
+    dropNotification(row.id)
+    void markRead(row.id).catch(() => {})
   }
 
   return (
@@ -98,12 +111,25 @@ export default function GroupPage() {
               </>
             ) : group.my_status === MemberStatus.Invited ? (
               <>
-                <button className="btn btn--sm" onClick={() => void act(() => acceptInvite(groupId), 'joined')}>
+                <button
+                  className="btn btn--sm"
+                  onClick={() =>
+                    void act(async () => {
+                      await acceptInvite(groupId)
+                      resolveInviteNotice()
+                    }, 'joined')
+                  }
+                >
                   join
                 </button>
                 <button
                   className="btn btn--sm btn--danger"
-                  onClick={() => void act(() => declineInvite(groupId), 'invitation declined')}
+                  onClick={() =>
+                    void act(async () => {
+                      await declineInvite(groupId)
+                      resolveInviteNotice()
+                    }, 'invitation declined')
+                  }
                 >
                   decline
                 </button>
@@ -251,7 +277,24 @@ function InviteControl({ groupId, onInvited }: { groupId: number; onInvited: () 
 /** the creator's queue. a 403 for anybody else, which ErrorView renders as the red bar */
 function RequestQueue({ groupId, onDecided }: { groupId: number; onDecided: () => void }) {
   const { data, loading, error, refetch } = useFetch<JoinRequest[]>(() => listRequests(groupId), [groupId])
+  const { notifications, dropNotification } = useBadges()
   const toast = useToast()
+
+  /**
+   * ! the asking user is part of the match and not optional. one group can have several people
+   * ! waiting, each with its own notification, so matching on the group alone would mark a
+   * ! different request read than the one just decided
+   */
+  const resolveRequestNotice = (userId: number) => {
+    const row = pendingNotice(notifications, {
+      type: NotificationType.GroupJoinRequest,
+      groupId,
+      actorId: userId,
+    })
+    if (!row) return
+    dropNotification(row.id)
+    void markRead(row.id).catch(() => {})
+  }
 
   if (loading) return <Loading />
   if (error) return <ErrorView error={error} onRetry={refetch} />
@@ -279,6 +322,7 @@ function RequestQueue({ groupId, onDecided }: { groupId: number; onDecided: () =
                 className="btn btn--sm"
                 onClick={async () => {
                   await decideRequest(groupId, r.user_id, true)
+                  resolveRequestNotice(r.user_id)
                   refetch()
                   onDecided()
                   toast('admitted')
@@ -290,6 +334,7 @@ function RequestQueue({ groupId, onDecided }: { groupId: number; onDecided: () =
                 className="btn btn--sm btn--danger"
                 onClick={async () => {
                   await decideRequest(groupId, r.user_id, false)
+                  resolveRequestNotice(r.user_id)
                   refetch()
                   onDecided()
                   toast('refused')

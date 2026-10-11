@@ -84,6 +84,34 @@ export function describeNotification(n: NotificationRow): string {
   }
 }
 
+/**
+ * the unresolved notification that an action taken somewhere else has just answered.
+ * ! a group notification has entry points the notices panel knows nothing about: an invite is
+ * ! answered from the groups list or the group page, a join request from the group's own queue,
+ * ! an rsvp from the events channel. the row stays unread through all of them, and an unread
+ * ! row still counts — which is how a group goes on showing a pending number for something
+ * ! already dealt with
+ * ? a follow request needs none of this, it has exactly one place it can be answered
+ * ! so the rule is: whoever performs the action marks the row, exactly as resolveNotification
+ * ! does for the panel. this finds the row to mark
+ * ? matched on the fields that identify the subject rather than on entity_id alone, because
+ * ? entity_id means a different table per kind — a group for an invite, an event for an rsvp —
+ * ? and a join request needs the asking user too, since one group can have several waiting
+ */
+export function pendingNotice(
+  rows: NotificationRow[],
+  match: { type: NotificationRow['type']; groupId?: number; entityId?: number; actorId?: number },
+): NotificationRow | undefined {
+  return rows.find(
+    (n) =>
+      n.read_at === null &&
+      n.type === match.type &&
+      (match.groupId === undefined || n.group_id === match.groupId) &&
+      (match.entityId === undefined || n.entity_id === match.entityId) &&
+      (match.actorId === undefined || n.actor_id === match.actorId),
+  )
+}
+
 /** where a notification points, for the "open" affordance on the notices page */
 export function targetHref(n: NotificationRow): string | null {
   switch (n.type) {

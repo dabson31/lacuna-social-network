@@ -260,3 +260,79 @@
   color: var(--ink);
   border-bottom-color: var(--ink-faint);
 }
+
+/* --- 3. a row with an action beside it --------------------------------------
+   the design's .row-item stacks: a full width .row-main, and a .row-detail
+   under it that an expander reveals. that is right for the directory and the
+   groups list, where the row holds several actions behind one click.
+   ! a followers list is the opposite case: one action per row, wanted at a
+   ! glance, and the row itself still has to open the profile. the action
+   ! cannot live INSIDE .row-main — that is an <a>, and a button inside an
+   ! anchor is not layout a browser will do — so it sits beside it and the
+   ! row-item becomes the flex container.
+   ? every value is the design's own: 26px is .row-main's horizontal padding,
+   ? and .row-ops keeps its own gap and wrap from lacuna.css.                 */
+
+.row-item--act {
+  display: flex;
+  align-items: center;
+}
+
+.row-item--act .row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* .row-ops carries margin-top: 12px for the expanded panel it was written
+   for, which would push it off centre here */
+.row-item--act .row-ops {
+  margin: 0;
+  padding-right: 26px;
+  flex: none;
+}
+
+/* --- 4. the right rail's one navigating control -----------------------------
+   .presence button is the only control in the right rail that goes somewhere,
+   and the mockup draws it as bare text: `background: 0; border: 0`, with a
+   background only on hover. So until the pointer is already on it, it does not
+   read as a control at all — it reads as a row of status text, which is what
+   the eight panels around it are.
+   ! a resting hairline on the leading edge, the same --line the rows use,
+   ! which strengthens to the accent on hover and focus. it reserves its own
+   ! width at rest, so nothing shifts when it lights up.
+   ? deliberately the dimmest possible hint rather than a border or a fill:
+   ? the panel is a readout, and eight bordered buttons in it would read as a
+   ? form.                                                                    */
+
+.presence button {
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+/*! no `outline: 0` here. lacuna.css opens with a global
+ *! `:focus-visible { outline: 1px solid var(--acid) }`, so every control in the app already
+ *! has a keyboard ring. .tile drops it deliberately because it replaces it with an acid
+ *! border of its own; copying that here would have taken the ring away and given nothing
+ *! back. all of this is about the RESTING state. */
+.presence button:hover,
+.presence button:focus-visible {
+  border-left-color: var(--acid-dim);
+  background: var(--c0c0c0e);
+}
+
+.presence button:hover .caret,
+.presence button:focus-visible .caret {
+  color: var(--ink-faint);
+}
+
+/* .caret is scoped to `.row-main .caret` in the design, so the presence row
+   needs its own. these are that rule's values */
+.presence .caret {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-ghost);
+  transition: color 0.12s;
+}

@@ -14,6 +14,9 @@ import (
 
 var ErrUnsupportedType = errors.New("only JPEG, PNG and GIF images are allowed")
 
+
+//! here, a better implemention wouldve been turning the image given to *.webp instead 
+//? because it offers better compression and image quality compared to traditional formats
 var allowed = map[string]string{
 	"image/jpeg": ".jpg",
 	"image/png":  ".png",
@@ -22,7 +25,7 @@ var allowed = map[string]string{
 
 type Store struct {
 	dir   string
-	files fs.FS // read-only view of dir
+	files fs.FS // read-only view of dirconfig
 }
 
 func New(dir string) (*Store, error) {
@@ -33,7 +36,7 @@ func New(dir string) (*Store, error) {
 	return &Store{dir: dir, files: os.DirFS(dir)}, nil
 }
 
-// Save checks the real file type, writes it under a random name and returns that name.
+// save checks the real file type, writes it under a random name and returns that name
 // the name is what goes in the db (avatar_path, image_path); the file is served at /uploads/<name>
 func (s *Store) Save(src io.Reader) (string, error) {
 	// never trust the file extension or the client's Content-Type header: look at the bytes.

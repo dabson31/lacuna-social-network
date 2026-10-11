@@ -7,7 +7,7 @@ import { ErrorView } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
 import { useBadges } from '@/components/layout/BadgeProvider'
 import { fieldErrors } from '@/lib/api/errors'
-import { toRFC3339 } from '@/lib/utils/time'
+import { localDayStart, toRFC3339 } from '@/lib/utils/time'
 import { EventCard } from '@/features/groups/components/EventCard'
 import { useEventFanIn } from '@/features/groups/hooks/useEventFanIn'
 import { createEvent } from '@/features/groups/api'
@@ -58,7 +58,9 @@ export default function EventsPage() {
       //? "event time must be an RFC 3339 timestamp" — so they are printed as written rather
       //? than prefixed with the key, which would read "description: description is required"
       const named = Object.values(fields ?? {}).join(' · ')
-      toast(named ? `that event is incomplete · ${named}` : 'that event did not save')
+      //? one prefix for every reason the service can refuse, because the list now includes a
+      //? date in the past, and "incomplete" is the wrong word for a field that was filled in
+      toast(named ? `that event did not save · ${named}` : 'that event did not save')
     }
   }
 
@@ -100,9 +102,17 @@ export default function EventsPage() {
             <span className="lbl">description</span>
             <textarea name="description" rows={3} required />
           </label>
+          {/*
+            ! min is midnight today, so the picker will not offer a past day and the browser
+            ! refuses one typed in by hand. the service checks the same floor, because a form
+            ! attribute is a convenience and not a rule — anything posted straight at the api
+            ! never passed through it
+            ? min is read once per render rather than held in state. the only way it goes stale
+            ? is a form left open across midnight, and the service is still behind it
+          */}
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="lbl">day and time</span>
-            <input type="datetime-local" name="event_time" required />
+            <input type="datetime-local" name="event_time" min={localDayStart()} required />
           </label>
           <button className="btn btn--sm btn--primary" type="submit">
             raise it

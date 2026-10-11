@@ -79,7 +79,7 @@ export default function DirectoryPage() {
               setRaw(e.target.value)
               setOffset(0)
             }}
-            placeholder="name, nickname or email"
+            placeholder="name or nickname"
             aria-label="Search accounts"
           />
           <span className="k">/</span>

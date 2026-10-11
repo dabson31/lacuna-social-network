@@ -23,6 +23,9 @@ export function setPrivacy(isPublic: boolean): Promise<void> {
 /**
  * ? an empty q matches everyone, because the store builds LIKE '%%', and the caller is excluded
  * ? by the query itself. so browse and search are the same call with no client side filtering
+ * ! matches first name, last name and nickname only. email is not searchable on purpose: a
+ * ! LIKE on it turns this box into a "is this address registered?" oracle, which is the one
+ * ! thing the login handler goes out of its way not to answer
  */
 export function searchUsers(q: string, limit: number, offset: number): Promise<ListUser[]> {
   return api.json<ListUser[]>('/api/users' + api.query({ q, limit, offset }))

@@ -41,6 +41,14 @@ export interface NotificationRow {
   actor_name: string
   actor_avatar: string | null
   entity_id: number | null
+  /**
+   * which group this notification is about, null for a kind that is about no group.
+   * ! derived by the server, not stored, because entity_id names a different table per kind:
+   * ! the group for an invite or a join request, the EVENT for event_created. so this is the
+   * ! only field that can file a notification under a group without the client re-deriving a
+   * ! rule it has no data for
+   */
+  group_id: number | null
   read_at: string | null
   created_at: string
 }

@@ -1,10 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import type { ListUser } from '@shared/contracts/users'
 import { Avatar } from '@/components/ui/Avatar'
 import { Empty, Loading } from '@/components/ui/Empty'
 import { useBadges } from '@/components/layout/BadgeProvider'
-import { displayName } from '@/lib/utils/identity'
+import { useFetch } from '@/lib/api/useFetch'
+import { useDebounced } from '@/hooks/useDebounced'
+import { displayName, handle } from '@/lib/utils/identity'
+import { searchUsers } from '@/features/profile/api'
 
 /**
  * the inbox, ported from viewMessages' list branch at line 3967.
@@ -15,6 +21,7 @@ import { displayName } from '@/lib/utils/identity'
  */
 export default function InboxPage() {
   const { inbox } = useBadges()
+  const [starting, setStarting] = useState(false)
 
   if (!inbox) return <Loading label="reading conversations…" />
 
@@ -29,7 +36,19 @@ export default function InboxPage() {
         </span>
         <div className="spacer" />
         <span className="lbl">{unread || 'no'} unread</span>
+        {/*
+          ! the inbox already lists everybody an accepted follow makes reachable — the model
+          ! says so, an empty last_message is a contact and not missing data. who it does NOT
+          ! list is a public-profile stranger, because the query unions accepted follows with
+          ! existing dm history and a stranger has neither. reaching them meant opening the
+          ! directory or their profile first, which is the trip this removes
+        */}
+        <button className="btn btn--sm" onClick={() => setStarting((v) => !v)}>
+          {starting ? 'close' : 'new conversation'}
+        </button>
       </div>
+
+      {starting && <StartConversation onClose={() => setStarting(false)} />}
 
       <div className="rows">
         {inbox.direct.map((c) => (
@@ -95,5 +114,70 @@ export default function InboxPage() {
         {inbox.groups.length === 0 && <Empty label="no group rooms · join a group to get one" />}
       </div>
     </>
+  )
+}
+
+/**
+ * pick somebody to write to for the first time.
+ * ? GET /api/users?q= is the only user search there is, so this is the directory's call rather
+ * ? than a new endpoint. it searches names and nicknames and never email
+ * ! it does not pre-filter to people you may message, and it must not pretend to: "at least one
+ * ! of the two is following the other, or the recipient is public" is chat's rule and it lives
+ * ! in chat's service. the thread answers 403 chat_not_allowed and the conversation page already
+ * ! renders that as the red notice, which is the one honest place for it
+ */
+function StartConversation({ onClose }: { onClose: () => void }) {
+  const router = useRouter()
+  const [raw, setRaw] = useState('')
+  //? debounced, or every keystroke is a request. the same 250ms the directory and the group
+  //? invite picker use
+  const q = useDebounced(raw, 250)
+  const { data, loading } = useFetch<ListUser[]>(() => (q ? searchUsers(q, 8, 0) : Promise.resolve([])), [q])
+  const found = data ?? []
+
+  return (
+    <div className="rows">
+      <div className="row-item" style={{ padding: '13px 26px' }}>
+        <label className="search" style={{ width: '100%', maxWidth: 360 }}>
+          <span className="lbl" style={{ letterSpacing: '.1em' }}>
+            to
+          </span>
+          <input
+            autoFocus
+            type="search"
+            value={raw}
+            onChange={(e) => setRaw(e.target.value)}
+            placeholder="name or nickname"
+            aria-label="Find somebody to message"
+          />
+        </label>
+      </div>
+
+      {found.map((u) => (
+        <div className="row-item" key={u.id}>
+          <button
+            className="row-main"
+            onClick={() => {
+              onClose()
+              router.push(`/chat/${u.id}`)
+            }}
+          >
+            <span className={u.is_public ? 'dot dot--on' : 'dot dot--idle'} />
+            <Avatar name={displayName(u)} path={u.avatar_path} size="sm" />
+            <span className="tx">
+              <span className="nm">{displayName(u)}</span>
+              <span className="mt">{handle(u)} · {u.is_public ? 'public record' : 'private record'}</span>
+            </span>
+            <span className="caret" aria-hidden="true">
+              ›
+            </span>
+          </button>
+        </div>
+      ))}
+
+      {/*? gated on loading as well, or the empty state flashes between the keystroke and the
+          response on every search that follows one that found nothing */}
+      {q !== '' && !loading && found.length === 0 && <Empty label="no account matches" />}
+    </div>
   )
 }

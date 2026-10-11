@@ -190,6 +190,12 @@ func (s *Service) CreateEvent(ctx context.Context, groupID, creatorID int64, in 
 	t, err := time.Parse(time.RFC3339, in.EventTime)
 	if err != nil {
 		fields.Add("event_time", "event time must be an RFC 3339 timestamp")
+	} else if t.UTC().Before(startOfToday()) {
+		// an event in the past cannot be attended and cannot be answered, it is only noise in
+		// a channel that sorts by event_time ascending, where it would also sit at the very top
+		// ! checked here and not only on the form. the input's min attribute is a convenience
+		// ! for the person typing, and anything that arrives over http has not been through it
+		fields.Add("event_time", "an event cannot be scheduled before today")
 	}
 	if fields.Any() {
 		return Event{}, fields
@@ -245,6 +251,17 @@ func (s *Service) Respond(ctx context.Context, eventID, userID int64, in Respond
 		return err
 	}
 	return s.store.respond(ctx, eventID, userID, in.Response)
+}
+
+// startOfToday is midnight UTC on the current day, which is the floor an event time has to
+// clear.
+// ? the floor is the start of today and not "now" on purpose: the rule a reader expects is
+// ? "today or later", and refusing 09:00 today at 18:00 would be refusing a date the picker
+// ? itself offers. it is also the only choice that behaves the same for a caller whose clock
+// ? is a few hours either side of the server's
+func startOfToday() time.Time {
+	now := time.Now().UTC()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func validateGroup(in CreateGroupInput) httpx.ValidationErrors {

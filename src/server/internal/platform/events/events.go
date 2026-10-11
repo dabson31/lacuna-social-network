@@ -31,9 +31,12 @@ type Event struct {
 // request is still around
 type Handler func(ctx context.Context, e Event)
 
-// Bus is a tiny in process publish subscribe, it is how a feature tells another feature
-// something happened without importing it, follows publishes and notifications listens,
+// Bus is a tiny in process publish subscribe, 
+// it is how a feature tells another feature something happened without importing it, follows publishes and notifications listens
 // neither knows about the other
+//! this limits coupling, meaning the interdependence between different software modules
+//! while this is better in practice, making sure the connection between the two is consistent is somewhat challenging sometimes 
+//* 
 type Bus struct {
 	mu   sync.RWMutex
 	subs map[string][]Handler

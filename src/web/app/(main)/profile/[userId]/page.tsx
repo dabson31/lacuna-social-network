@@ -39,12 +39,32 @@ export default function ProfilePage() {
   const targetId = Number(params.userId)
   const [editing, setEditing] = useState(false)
   const [graph, setGraph] = useState<'none' | 'followers' | 'following'>('none')
+  /**
+   * the rows the viewer has acted on since the list was fetched.
+   * ! needed because a pending request is in neither of the server's two lists — it is not an
+   * ! accepted follow — so refetching after a request would put the label back to "follow" on
+   * ! somebody already asked. the server's answer is what goes in here, never a guess: a public
+   * ! account answers "accepted" and a private one "pending", which is the subject's bypass
+   * ! rule and not something the client may decide
+   */
+  const [moved, setMoved] = useState<Record<number, FollowStatus>>({})
 
   const { data: profile, loading, error, refetch } = useFetch(() => getProfile(targetId), [targetId])
   const posts = useCursorList<Post>((before, limit) => listByAuthor(targetId, before, limit), 20, [targetId])
   const lists = useFetch<UserCard[]>(
     () => (graph === 'followers' ? listFollowers(targetId) : graph === 'following' ? listFollowing(targetId) : Promise.resolve([])),
     [graph, targetId],
+  )
+  /**
+   * ! UserCard carries no relationship field — id, names, nickname, avatar, is_public and
+   * ! nothing else — so "do i follow this person?" cannot come off the list being drawn. the
+   * ! viewer's own following list answers it for every row at once, which is one extra request
+   * ! for the page instead of one per row. the directory intersects the same two lists
+   * ? fetched lazily with the graph, so a profile nobody opens a list on costs nothing
+   */
+  const myFollowing = useFetch<UserCard[]>(
+    () => (graph === 'none' ? Promise.resolve([]) : listFollowing(me.id)),
+    [graph, me.id],
   )
 
   if (Number.isNaN(targetId)) return <Empty label="not available · that is not a user id" />
@@ -53,6 +73,16 @@ export default function ProfilePage() {
   if (!profile) return <Empty label="not available" />
 
   const name = displayName(profile)
+
+  /**
+   * how the viewer stands with one row of a followers or following list.
+   * ? a row the viewer has asked to follow and is still waiting on reads as "no relation" until
+   * ? they act on it, because nothing the api offers lists outgoing pending requests. the
+   * ? directory has the same gap and the button's own response closes it the moment it is used
+   */
+  const relationTo = (id: number): FollowStatus =>
+    moved[id] ??
+    ((myFollowing.data ?? []).some((u) => u.id === id) ? FollowStatus.Accepted : FollowStatus.None)
 
   const togglePrivacy = async (next: boolean) => {
     try {
@@ -216,7 +246,33 @@ export default function ProfilePage() {
           ) : lists.error ? (
             <ErrorView error={lists.error} onRetry={lists.refetch} />
           ) : (
-            <UserCardList users={lists.data ?? []} empty={`no ${graph} to show`} />
+            <UserCardList
+              users={lists.data ?? []}
+              empty={`no ${graph} to show`}
+              /*
+                ! one action per row, in the list itself, so following back or unfollowing does
+                ! not mean opening each profile in turn
+                ? no button on the viewer's own row: there is nothing to do with it, and the
+                ? service answers 400 self_follow to anyone who tries
+                ? the list is NOT refetched after a change. a row that vanishes under the cursor
+                ? you just clicked is worse than one that now says "follow", and the label is
+                ? already correct from the server's own answer
+              */
+              action={(u) =>
+                u.id === me.id ? null : (
+                  <FollowButton
+                    userId={u.id}
+                    status={relationTo(u.id)}
+                    onChange={(next) => {
+                      setMoved((prev) => ({ ...prev, [u.id]: next }))
+                      //? the counts on this profile move when the viewer is looking at their
+                      //? own following list, so the header is refetched rather than patched
+                      refetch()
+                    }}
+                  />
+                )
+              }
+            />
           )}
         </>
       )}

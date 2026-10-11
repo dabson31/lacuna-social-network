@@ -62,9 +62,34 @@ export function RailLeft() {
           //! labelled "unread" that only counted dms sat blank while rooms had unread messages
           return badges.unread + badges.unreadGroups || ''
         case 'groups':
-          return badges.groups || ''
+          //! the waiting notifications when there are any, the membership count otherwise. a
+          //! tile has one number slot — .ct, the design's own — so an alert and a tally cannot
+          //! both sit on it, and an invite or a join request waiting on you is the more urgent
+          //! of the two. the readout under the tiles names whichever one is showing
+          return badges.groupPendingTotal || badges.groups || ''
         default:
           return ''
+      }
+    },
+    [badges],
+  )
+
+  /**
+   * whether a tile's number is something waiting on the reader rather than a plain tally.
+   * ? it decides two things that must agree: the word under the tiles and whether the number
+   * ? is drawn in the accent. splitting them is how a tile ends up saying "3 groups" in acid
+   */
+  const alerting = useCallback(
+    (id: string): boolean => {
+      switch (id) {
+        case 'notices':
+          return badges.pending > 0
+        case 'messages':
+          return badges.unread + badges.unreadGroups > 0
+        case 'groups':
+          return badges.groupPendingTotal > 0
+        default:
+          return false
       }
     },
     [badges],
@@ -174,6 +199,9 @@ export function RailLeft() {
 
   const infoChannel = CHANNELS.find((c) => c.id === shown)
   const infoCount = infoChannel ? countFor(infoChannel.id) : ''
+  //? "pending" and not "groups" while the tile is showing notifications, so the number under
+  //? the tiles is never labelled as the thing it is not
+  const infoLabel = shown === 'groups' && alerting('groups') ? 'pending' : (COUNT_LABEL[shown] ?? '')
 
   return (
     <nav className="rail-l" aria-label="Primary">
@@ -223,7 +251,15 @@ export function RailLeft() {
                     >
                       <Glyph id={c.id} />
                       <span className="nm">{c.name}</span>
-                      <span className="ct">{n}</span>
+                      {/*
+                        ? the same inline accent the chrome's two counters already use, rather
+                        ? than a new rule in a stylesheet that is meant to be read only. .ct is
+                        ? --ink-faint by default, which is correct for a tally and invisible
+                        ? for something waiting on you
+                      */}
+                      <span className="ct" style={alerting(c.id) ? { color: 'var(--acid)' } : undefined}>
+                        {n}
+                      </span>
                       <span className="ix">{c.ix}</span>
                     </Link>
                   </li>
@@ -265,7 +301,7 @@ export function RailLeft() {
                     ) : infoCount === '' ? null : (
                       <>
                         {infoCount}
-                        <small>{COUNT_LABEL[shown] ?? ''}</small>
+                        <small>{infoLabel}</small>
                       </>
                     )}
                   </span>

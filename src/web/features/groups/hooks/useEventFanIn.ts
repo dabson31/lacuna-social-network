@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { Event } from '@shared/contracts/groups'
+import { NotificationType } from '@shared/constants/domain'
 import { ApiError } from '@/lib/api/errors'
 import { useBadges } from '@/components/layout/BadgeProvider'
+import { pendingNotice } from '@/features/notifications/actions'
+import { markRead } from '@/features/notifications/api'
 import { listEvents, respondToEvent } from '../api'
 
 /** an event plus which group raised it, since the design prints the group on every card */
@@ -20,7 +23,7 @@ export interface FannedEvent extends Event {
  * ! the right rail panel share
  */
 export function useEventFanIn() {
-  const { myGroups } = useBadges()
+  const { myGroups, notifications, dropNotification } = useBadges()
   const [events, setEvents] = useState<FannedEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
@@ -66,6 +69,18 @@ export function useEventFanIn() {
    */
   const respond = useCallback(async (eventId: number, next: 'going' | 'not_going') => {
     await respondToEvent(eventId, next)
+    /**
+     * ! answering here answers the event_created notification too, which is the same pair of
+     * ! calls resolveNotification makes for the notices panel — respond, then mark read. an
+     * ! rsvp given on this page and one given in the panel have to leave the same state, or
+     * ! the group goes on showing a pending number for an event already answered
+     * ? matched on entity_id, because for this one kind entity_id is the event and not the group
+     */
+    const row = pendingNotice(notifications, { type: NotificationType.EventCreated, entityId: eventId })
+    if (row) {
+      dropNotification(row.id)
+      void markRead(row.id).catch(() => {})
+    }
     setEvents((prev) =>
       prev.map((e) => {
         if (e.id !== eventId) return e
@@ -74,7 +89,7 @@ export function useEventFanIn() {
         return { ...e, going_count: going, not_going_count: notGoing, my_response: next }
       }),
     )
-  }, [])
+  }, [notifications, dropNotification])
 
   return { events, loading, error, reload: load, respond }
 }

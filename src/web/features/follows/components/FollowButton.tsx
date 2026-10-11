@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FollowStatus } from '@shared/constants/domain'
 import { useToast } from '@/components/ui/Toast'
+import { isApiError } from '@/lib/api/errors'
 import { follow, unfollow } from '../api'
 
 /**
@@ -38,8 +39,22 @@ export function FollowButton({
         onChange(FollowStatus.None)
         toast(status === FollowStatus.Pending ? 'request withdrawn' : 'unfollowed')
       }
-    } catch {
-      toast('that did not go through')
+    } catch (err: unknown) {
+      /**
+       * ! 409 already_following is the one failure here that is not really a failure: a relation
+       * ! the caller could not see already exists. it happens in a followers or following list,
+       * ! where the only thing available to derive a status from is the viewer's own accepted
+       * ! follows — an outgoing request appears in neither of the api's two lists
+       * ? the state is set to pending rather than left alone, because DELETE is both unfollow
+       * ? and cancel-a-request: the action behind the button is right either way, and only the
+       * ? word on it can be off, in the rarer case where the existing relation was accepted
+       */
+      if (isApiError(err) && err.status === 409) {
+        onChange(FollowStatus.Pending)
+        toast('you have already asked this account')
+      } else {
+        toast('that did not go through')
+      }
     } finally {
       setBusy(false)
     }

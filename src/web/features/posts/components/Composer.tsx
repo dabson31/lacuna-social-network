@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { fieldErrors } from '@/lib/api/errors'
 import { LIMITS, runeLength } from '@/lib/utils/count'
 import { displayName } from '@/lib/utils/identity'
+import { submitOnEnter } from '@/lib/utils/keys'
 import { listFollowers } from '@/features/follows/api'
 import { ImagePicker } from '@/features/auth/components/ImagePicker'
 import { createPost } from '../api'
@@ -55,6 +56,9 @@ export function Composer({
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    //! the guard the disabled button used to be enough for. enter reaches the form directly,
+    //! so a second one while the first is still in flight would post twice
+    if (busy) return
     const formEl = e.currentTarget
     const body = new FormData(formEl)
     body.set('privacy', privacy)
@@ -100,6 +104,7 @@ export function Composer({
               maxLength={LIMITS.post}
               value={content}
               onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => submitOnEnter(e, formRef.current)}
             />
             <FieldError fields={fields} name="content" />
 
@@ -181,6 +186,10 @@ export function Composer({
               </div>
               <FieldError fields={fields} name="privacy" />
               <div className="spacer" />
+              {/*? the gesture says so out loud, in the design's own .lbl, because enter now
+                  sends and a reader who expects a newline would otherwise find out by
+                  posting half a sentence. .under already wraps, so this costs no layout */}
+              <span className="lbl">enter sends · shift+enter new line</span>
               <span className="lbl">
                 {runeLength(content)} / {LIMITS.post}
               </span>

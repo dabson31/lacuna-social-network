@@ -41,9 +41,26 @@ export function PresencePanel() {
               title={`Open a conversation with ${displayName(p)}`}
               onClick={() => router.push(`/chat/${p.peer_id}`)}
             >
+              {/*? the dot stays idle whatever the unread count is. this column means presence
+                  in this panel, the panel wears a `sim` tag because presence is synthetic here,
+                  and lighting it for unread messages would make one glyph mean two things */}
               <span className="dot dot--idle" />
               <span className="nm off">{handle(p)}</span>
-              <span className="st">{p.unread ? `${p.unread} new` : p.last_at ? 'quiet' : 'no history'}</span>
+              {/*
+                ! the unread count used to print in --ink-ghost at 8.5px, the same as "quiet"
+                ! and "no history", which made the one readout in the panel that is actually
+                ! news indistinguishable from the two that are not
+                ? the accent, inline, is what the chrome's own two counters do. the rest of the
+                ? row keeps the design's weights
+              */}
+              <span className="st" style={p.unread ? { color: 'var(--acid)' } : undefined}>
+                {p.unread ? `${p.unread} new` : p.last_at ? 'quiet' : 'no history'}
+              </span>
+              {/*? the mark every other openable row in the app carries, so this reads as a row
+                  that goes somewhere rather than as a line of status text */}
+              <span className="caret" aria-hidden="true">
+                ›
+              </span>
             </button>
           </li>
         ))}

@@ -64,6 +64,19 @@ export function toRFC3339(localValue: string): string {
   return Number.isNaN(d.getTime()) ? localValue : d.toISOString()
 }
 
+/**
+ * midnight today, local, in the shape a datetime-local input wants for its `min`.
+ * ! "YYYY-MM-DDTHH:mm" and nothing else. an iso string with seconds or a Z suffix is ignored
+ * ! by the attribute, silently, so the picker would go on offering last year
+ * ? built from the local parts rather than from toISOString(), which would hand over UTC and
+ * ? move the floor by a day for anybody far enough east or west
+ */
+export function localDayStart(): string {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T00:00`
+}
+
 /** "2026-10-09", what the date_of_birth column holds and what <input type="date"> produces */
 export function dateOnly(iso: string | null): string {
   if (!iso) return ''
