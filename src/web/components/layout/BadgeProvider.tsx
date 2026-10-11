@@ -38,6 +38,16 @@ interface Badges {
   /** groups the caller is a member of, for the tile */
   groups: number
   /**
+   * posts added to the caller's groups since they last read each one, summed.
+   * ! a THIRD kind of waiting thing in a group, kept apart from the other two on purpose: a
+   * ! group invite is a notification, a room message is a message, and a post is neither. the
+   * ! subject requires notifications and private messages to stay distinguishable, and a post
+   * ! would blur both if it were folded into either
+   * ? the per group number is already on Group.unread_posts, so nothing needs a second
+   * ? lookup — this is only the sum, which is what the nav tile wants
+   */
+  unreadPosts: number
+  /**
    * unresolved notifications filed under a group, one row per group.
    * ! a fourth number rather than part of `pending`, because "how many notices are waiting"
    * ! and "which group is waiting on me" are different questions. the groups list needs the
@@ -63,11 +73,35 @@ interface Badges {
 const BadgeContext = createContext<Badges | null>(null)
 
 /**
+ * what came back over the wire, made safe to hold in state.
+ * ! a response is CAST to its contract, never validated — `api.json<Feed>` is one generic
+ * ! parameter and no runtime check — so every field here is only as true as the server that
+ * ! answered. a server one build behind simply omits a key it does not know about yet, and
+ * ! `Feed.group_unread` then arrives undefined while typescript swears it is an array
+ * ! that is exactly what crashed this provider: the array landed undefined, the first
+ * ! notification frame called .some on it, and the whole shell went to the error boundary over
+ * ! a counter. a badge must never be able to take the page down
+ * ? so the arrays are made real once, here, where the payload enters state. everything
+ * ? downstream then gets the shape the type promised, with no optional chaining sprinkled
+ * ? through the component as a substitute
+ */
+function asFeed(raw: Feed): Feed {
+  return {
+    notifications: raw?.notifications ?? [],
+    unread_count: raw?.unread_count ?? 0,
+    group_unread: raw?.group_unread ?? [],
+  }
+}
+
+/**
  * move one group's tally by `by`, adding the row if it is new and dropping it at zero.
  * ? a null group means the notification belongs to no group — a follow request — so there is
  * ? nothing to move, and the list comes back untouched
+ * ? the ?? [] is belt and braces next to asFeed, and it stays: this is the function that was
+ * ? on the stack trace, and a counter is not worth a second chance to break a page over
  */
-function bumpGroup(list: GroupUnread[], groupId: number | null, by: number): GroupUnread[] {
+function bumpGroup(list: GroupUnread[] | undefined, groupId: number | null, by: number): GroupUnread[] {
+  list = list ?? []
   if (groupId === null) return list
   if (!list.some((g) => g.group_id === groupId)) {
     return by > 0 ? [...list, { group_id: groupId, unread: by }] : list
@@ -96,7 +130,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     if (!authed) return
     void api
       .json<Feed>('/api/notifications' + api.query({ limit: 50 }))
-      .then(setFeed)
+      .then((raw) => setFeed(asFeed(raw)))
       .catch(() => {
         /* the shell must render even when a panel cannot fill, so this stays silent */
       })
@@ -106,7 +140,9 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     if (!authed) return
     void api
       .json<Inbox>('/api/conversations')
-      .then(setInbox)
+      //? same reason as asFeed: the two halves are read with .reduce and .find all over the
+      //? shell, and a server that answered with one of them missing would take the page down
+      .then((raw) => setInbox({ direct: raw?.direct ?? [], groups: raw?.groups ?? [] }))
       .catch(() => {})
   }, [authed])
 
@@ -114,7 +150,7 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     if (!authed) return
     void api
       .json<Group[]>('/api/groups')
-      .then(setGroups)
+      .then((raw) => setGroups(raw ?? []))
       .catch(() => {})
   }, [authed])
 
@@ -159,6 +195,34 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     toast(`${NOTIFICATION_LABEL[row.type]} · ${row.actor_name}`)
   })
 
+  /**
+   * the opposite of the frame above: rows the server has deleted.
+   * ! a notification can stop being true while it is on screen. the sender withdraws the
+   * ! follow request, the row is deleted at the source, and without this the panel keeps
+   * ! drawing an accept button whose endpoint now answers 404 until something refetches
+   * ? the count only moves for rows this feed was actually holding as unread. the server
+   * ? deletes by entity and does not know, or need to know, which page of the inbox the
+   * ? reader has in memory, so subtracting blind is how a badge goes negative
+   */
+  useFrame(WsFrame.NotificationGone, ({ ids }) => {
+    setFeed((prev) => {
+      if (prev === null) return prev
+      const gone = prev.notifications.filter((n) => ids.includes(n.id))
+      if (gone.length === 0) return prev
+      let unread_count = prev.unread_count
+      let group_unread = prev.group_unread
+      for (const n of gone) {
+        if (n.read_at !== null) continue
+        unread_count = Math.max(0, unread_count - 1)
+        //? a follow request belongs to no group, so this is a no-op for the only kind that
+        //? is retracted today. it is here so a retraction of a group kind cannot leave the
+        //? per-group tally counting something that no longer exists
+        group_unread = bumpGroup(group_unread, n.group_id, -1)
+      }
+      return { notifications: prev.notifications.filter((n) => !ids.includes(n.id)), unread_count, group_unread }
+    })
+  })
+
   //? a dm arriving anywhere bumps the inbox, which is cheaper and more correct than trying to
   //? patch an unread count per conversation from the frame alone
   useFrame(
@@ -172,6 +236,26 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
       toast(`message · ${m.sender_name}`)
     },
     [reloadInbox],
+  )
+
+  /**
+   * ! a post in a group behaves like a message as far as the shell is concerned: a number
+   * ! moves somewhere the reader is not looking, so it has to move on its own. the count
+   * ! itself is read off a watermark in sql, so this only has to ask for the group list again
+   * ? the author is told too, because their other tabs are showing the same stale number.
+   * ? their own post does not count as unread — the query excludes it, not this handler
+   */
+  useFrame(
+    WsFrame.GroupPost,
+    (p) => {
+      reloadGroups()
+      if (p.author_id === me?.id) return
+      //? already reading that group, so the number is about to be cleared anyway
+      if (pathname === `/groups/${p.group_id}`) return
+      const room = groups.find((g) => g.id === p.group_id)
+      toast(room ? `${room.title} · post from ${p.author_name}` : `group post · ${p.author_name}`)
+    },
+    [reloadGroups],
   )
 
   useFrame(
@@ -199,6 +283,8 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
       unread,
       unreadGroups,
       groups: groups.filter((g) => g.my_status === 'member').length,
+      //? every group carries its own number, so the sum is a fold over the list already here
+      unreadPosts: groups.reduce((n, g) => n + (g.unread_posts ?? 0), 0),
       groupPending,
       groupPendingTotal: groupPending.reduce((n, g) => n + g.unread, 0),
       notifications: feed?.notifications ?? [],

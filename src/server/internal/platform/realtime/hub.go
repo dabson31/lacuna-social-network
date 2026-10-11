@@ -3,6 +3,8 @@ package realtime
 import (
 	"log/slog"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 // Hub is the connection registry. It maps a user id to every socket that user currently
@@ -92,6 +94,40 @@ func (h *Hub) IsOnline(userID int64) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.conns[userID]) > 0
+}
+
+// CloseSession drops the sockets that one login opened, and leaves every other login of
+// the same user untouched.
+//
+// This is what stops a socket outliving the session that authenticated it. The handshake is
+// the only time a socket is checked, so without this a logged-out tab keeps its connection,
+// keeps receiving fan-out, and keeps being allowed to send — which is how typing notices
+// arrive from an account that is no longer logged in.
+//
+// Scoped to one user's bucket rather than scanning every socket on the server, because the
+// caller knows whose session it was and there is no reason to walk the rest.
+//
+// ! sessionID and not userID is the whole point. the same person logged in from a second
+// ! browser holds a different session, and the audit opens two browsers specifically to check
+// ! that logging out of one leaves the other alone
+func (h *Hub) CloseSession(userID int64, sessionID string) {
+	h.mu.RLock()
+	doomed := make([]*Conn, 0, len(h.conns[userID]))
+	for c := range h.conns[userID] {
+		if c.sessionID == sessionID {
+			doomed = append(doomed, c)
+		}
+	}
+	h.mu.RUnlock()
+
+	// closed outside the lock, for the same reason SendToUser copies first: close takes the
+	// write lock through Unregister, and a RWMutex is not reentrant
+	for _, c := range doomed {
+		c.closeWith(websocket.ClosePolicyViolation)
+	}
+	if len(doomed) > 0 {
+		h.log.Debug("ws session closed", "user", userID, "sockets", len(doomed))
+	}
 }
 
 // CloseAll drops every socket. http.Server.Shutdown deliberately does not touch hijacked

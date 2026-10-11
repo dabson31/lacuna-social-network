@@ -57,13 +57,16 @@ func NewGateway(hub *Hub, log *slog.Logger, allowedOrigin string, onFrame Handle
 // check. No token in the query string — those end up in access logs, browser history and
 // Referer headers.
 func (g *Gateway) ServeWS(w http.ResponseWriter, r *http.Request) {
-	userID, ok := session.UserID(r.Context())
+	// the whole session and not just the user id: the socket has to remember WHICH login
+	// opened it, or logging out cannot find it again. see Hub.CloseSession
+	sess, ok := session.Current(r.Context())
 	if !ok {
 		// unreachable behind RequireAuth, but a socket handler that quietly accepts
 		// anonymous connections is a bug worth making structurally impossible
 		httpx.WriteError(w, http.StatusUnauthorized, "unauthenticated", "you must be logged in")
 		return
 	}
+	userID := sess.UserID
 
 	ws, err := g.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -73,12 +76,14 @@ func (g *Gateway) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := &Conn{
-		hub:    g.hub,
-		userID: userID,
-		ws:     ws,
-		send:   make(chan []byte, sendBuffer),
-		done:   make(chan struct{}),
-		log:    g.log,
+		hub:       g.hub,
+		userID:    userID,
+		sessionID: sess.ID,
+		expiresAt: sess.ExpiresAt,
+		ws:        ws,
+		send:      make(chan []byte, sendBuffer),
+		done:      make(chan struct{}),
+		log:       g.log,
 	}
 	g.hub.Register(c)
 

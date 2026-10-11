@@ -14,6 +14,19 @@ const (
 	GroupInvited       = "group_invite"
 	GroupJoinRequested = "group_join_request"
 	EventCreated       = "event_created"
+
+	// FollowRequestCancelled is the one kind that is NOT a notification type and must never
+	// reach the CHECK on notifications.type. it is a retraction: the sender withdrew a
+	// request that was still pending, so the notification announcing it is about something
+	// that no longer happened and gets deleted rather than written.
+	// ! it travels the bus for the same reason every other kind does — follows must not
+	// ! import notifications — and it is subscribed to a different handler, Forget rather
+	// ! than Record, which is what keeps the string out of the table
+	// ? EntityID carries the id of the follows row that was deleted, and the purge is scoped
+	// ? to it. that is deliberate: a cancel and an immediately resent request are two bus
+	// ? goroutines with no ordering between them, and a purge keyed on the pair alone could
+	// ? run second and delete the notification for the request that is still live
+	FollowRequestCancelled = "follow_request_cancelled"
 )
 
 // ! Note:

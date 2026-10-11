@@ -28,6 +28,12 @@ type Group struct {
 	MemberCount int       `json:"member_count"`
 	MyStatus    string    `json:"my_status"`
 	MyRole      string    `json:"my_role"`
+	// UnreadPosts is how many posts have appeared in this group since the caller last read
+	// it, their own excluded. zero for anyone who is not a member: there is nothing to be
+	// behind in a group you cannot see inside
+	// ! counted off group_members.last_read_post_id, which is a watermark and not a row per
+	// ! member per post — the same model group messages use, and chosen for the same reason
+	UnreadPosts int `json:"unread_posts"`
 }
 
 // GroupDetail is a group plus its member list, the list is only filled for members,
@@ -100,6 +106,12 @@ type Event struct {
 	NotGoingCount int       `json:"not_going_count"`
 	MyResponse    string    `json:"my_response"`
 }
+
+// the frame type this module owns, mirrored in src/shared/constants/ws.ts
+// ! a new post in a group is pushed the same way a group message is, because to a member
+// ! sitting on another page the two are the same event: something happened in a room they
+// ! belong to and the number next to it has to move on its own
+const FrameGroupPost = "group.post"
 
 type CreateGroupInput struct {
 	Title       string `json:"title"`

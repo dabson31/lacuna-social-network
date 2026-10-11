@@ -121,13 +121,29 @@ func (s *Store) ClearCookie(w http.ResponseWriter) {
 // an unexported struct type as the key means no other package can collide with it
 type ctxKey struct{}
 
-func WithUserID(ctx context.Context, userID int64) context.Context {
-	return context.WithValue(ctx, ctxKey{}, userID)
+// WithSession carries the whole session and not just whose it is.
+// ! the id matters as much as the user does, and the websocket is why. a socket is
+// ! authenticated once, during the handshake, and then lives for hours: when the session
+// ! behind it is destroyed, something has to be able to find THAT socket. not every socket
+// ! belonging to that user — the same person may be logged in from another browser on a
+// ! session of its own, and those two have to stay independent, which the audit checks
+// ? ExpiresAt rides along for the same reason, so a long lived connection can outlive nothing
+func WithSession(ctx context.Context, sess Session) context.Context {
+	return context.WithValue(ctx, ctxKey{}, sess)
+}
+
+// Current returns the session RequireAuth put in the context
+// ok is false if RequireAuth didnt run on this route
+func Current(ctx context.Context) (Session, bool) {
+	sess, ok := ctx.Value(ctxKey{}).(Session)
+	return sess, ok
 }
 
 // UserID returns the logged-in user's id
 // ok is false if RequireAuth didnt run on this route
+// ? kept as its own helper although Current now holds the same field: it is what forty odd
+// ? handlers ask for, and none of them has any business with the rest of the session
 func UserID(ctx context.Context) (int64, bool) {
-	id, ok := ctx.Value(ctxKey{}).(int64)
-	return id, ok
+	sess, ok := Current(ctx)
+	return sess.UserID, ok
 }

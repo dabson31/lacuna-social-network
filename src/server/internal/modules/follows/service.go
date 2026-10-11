@@ -54,13 +54,32 @@ func (s *Service) Follow(ctx context.Context, followerID, targetID int64) (Follo
 
 // Unfollow removes the row in either state, so it also cancels a request you sent,
 // nothing deleted means you were not following in the first place
+//
+// ! cancelling a PENDING request also retracts the notification it raised. the request is
+// ! gone, so a notice still offering an accept points at nothing, cannot be acted on and
+// ! cannot be cleared — request, cancel, request again and the recipient collected one dead
+// ! row per attempt. the retraction is what stops that pile forming in the first place
+//
+// ? only pending. unfollowing an ACCEPTED follow deletes the same table's row, but the
+// ? request behind it was answered, and that answer is the reader's history rather than a
+// ? loose end. publishing on both would quietly delete a resolved notification every time
+// ? somebody unfollowed
 func (s *Service) Unfollow(ctx context.Context, followerID, targetID int64) error {
-	n, err := s.store.remove(ctx, followerID, targetID)
+	followID, status, err := s.store.remove(ctx, followerID, targetID)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return errNotFollowing
+
+	if status == "pending" && s.Bus != nil {
+		s.Bus.Publish(ctx, events.Event{
+			Kind:        events.FollowRequestCancelled,
+			RecipientID: targetID,
+			ActorID:     followerID,
+			// the follows row that just stopped existing. the subscriber deletes the
+			// notification pointing AT IT and no other, which is what makes a cancel and an
+			// instantly resent request safe to interleave
+			EntityID: &followID,
+		})
 	}
 	return nil
 }

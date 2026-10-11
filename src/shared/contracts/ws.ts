@@ -1,4 +1,5 @@
 import { WsFrame } from '../constants/ws'
+import type { GroupPost } from './groups'
 
 /**
  * then payloads each mirrors a Go struct's json tags one for one
@@ -27,6 +28,14 @@ export interface GroupMessage {
   sender_name: string
   sender_avatar: string | null
 }
+
+/**
+ * groups.GroupPost, pushed when somebody posts in a group you are in.
+ * ? the row is re-exported rather than redeclared, for the same reason chat.ts re-exports the
+ * ? message types: a post fetched from the group's list and one pushed over the socket are
+ * ? deliberately the same shape, and two declarations would drift
+ */
+export type { GroupPost } from './groups'
 
 /** chat.TypingOut — the server tells you who is typing at you */
 export interface TypingNotice {
@@ -57,11 +66,24 @@ export interface NotificationRow {
  * the sexy ass union itself 
  * `type` is the discriminant, so a `switch (frame.type)` narrows `frame.payload` to the right shape in each branch with no casts anywhere
  */
+/**
+ * notifications.Gone — rows the server has deleted, so an open panel can stop drawing them.
+ * ! the only frame that removes rather than adds. a notification can stop being true while
+ * ! somebody is looking at it: the sender withdraws the follow request, the row is deleted,
+ * ! and without this the panel keeps offering an accept that now answers 404
+ * ? ids and not whole rows, because there is nothing left to send — the rows are gone
+ */
+export interface NotificationsGone {
+  ids: number[]
+}
+
 export type ServerFrame =
   | { type: typeof WsFrame.DmMessage; payload: DirectMessage }
   | { type: typeof WsFrame.GroupMessage; payload: GroupMessage }
+  | { type: typeof WsFrame.GroupPost; payload: GroupPost }
   | { type: typeof WsFrame.DmTyping; payload: TypingNotice }
   | { type: typeof WsFrame.NotificationNew; payload: NotificationRow }
+  | { type: typeof WsFrame.NotificationGone; payload: NotificationsGone }
   | { type: typeof WsFrame.Pong; payload?: null }
 
 /** The only two things the client is allowed to send. */

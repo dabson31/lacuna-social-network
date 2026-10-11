@@ -9,8 +9,8 @@ import { Empty } from '@/components/ui/Empty'
 import { useToast } from '@/components/ui/Toast'
 import { useBadges } from '@/components/layout/BadgeProvider'
 import { clockTime } from '@/lib/utils/time'
-import { markAllRead } from '@/features/notifications/api'
-import { describeNotification, resolveNotification, targetHref, verbsFor } from '@/features/notifications/actions'
+import { markAllRead, markRead } from '@/features/notifications/api'
+import { describeNotification, isStale, resolveNotification, targetHref, verbsFor } from '@/features/notifications/actions'
 
 /**
  * the Notices channel, ported from viewNotices at line 4071.
@@ -34,9 +34,17 @@ export default function NoticesPage() {
       dropNotification(n.id)
       toast(`${NOTIFICATION_LABEL[n.type]} ${accept ? 'accepted' : 'declined'} · ${n.actor_name}`)
       if (n.type === 'group_invite' || n.type === 'group_join_request') reloadGroups()
-    } catch {
-      toast('that did not go through')
-      reloadNotifications()
+    } catch (err: unknown) {
+      //! a stale row is retired instead of being left in the queue. it points at something
+      //! that is already gone, so the only thing another click can do is fail again
+      if (isStale(err)) {
+        dropNotification(n.id)
+        void markRead(n.id).catch(() => {})
+        toast(`${NOTIFICATION_LABEL[n.type]} · already dealt with`)
+      } else {
+        toast('that did not go through')
+        reloadNotifications()
+      }
     } finally {
       setBusy(null)
     }

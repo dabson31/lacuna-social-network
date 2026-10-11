@@ -1,6 +1,7 @@
 import { NotificationType } from '@shared/constants/domain'
 import type { NotificationRow } from '@shared/contracts/notifications'
 import * as api from '@/lib/api/client'
+import { isApiError } from '@/lib/api/errors'
 import { markRead } from './api'
 
 /**
@@ -82,6 +83,22 @@ export function describeNotification(n: NotificationRow): string {
     case NotificationType.EventCreated:
       return `${n.actor_name} raised an event in one of your groups. Answer going or not going.`
   }
+}
+
+/**
+ * whether a failed accept or decline means the notification is stale rather than the action
+ * broken.
+ * ! a notification is a POINTER at something — a follows row, an invitation, an event — and
+ * ! the thing it points at can be gone by the time it is answered: the sender withdrew the
+ * ! request, the invite was accepted from the group page, somebody clicked twice. the server
+ * ! answers 404 for a target that is gone or was never visible, and 409 for one already dealt
+ * ! with, and neither is a reason to leave a row sitting there with a button that can only
+ * ! fail again — which is what "none of them are removable" looked like from the outside
+ * ? anything else really is a failure: a 500, a dropped connection, a 403. those keep the row,
+ * ? because the action is still the right one and retrying is still the right move
+ */
+export function isStale(err: unknown): boolean {
+  return isApiError(err) && (err.status === 404 || err.status === 409)
 }
 
 /**

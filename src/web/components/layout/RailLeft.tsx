@@ -62,11 +62,15 @@ export function RailLeft() {
           //! labelled "unread" that only counted dms sat blank while rooms had unread messages
           return badges.unread + badges.unreadGroups || ''
         case 'groups':
-          //! the waiting notifications when there are any, the membership count otherwise. a
-          //! tile has one number slot — .ct, the design's own — so an alert and a tally cannot
-          //! both sit on it, and an invite or a join request waiting on you is the more urgent
-          //! of the two. the readout under the tiles names whichever one is showing
-          return badges.groupPendingTotal || badges.groups || ''
+          //! whatever is waiting inside the groups when there is anything — invitations and
+          //! join requests to answer, plus posts nobody has read — and the membership count
+          //! otherwise. a tile has one number slot, .ct, the design's own, so an alert and a
+          //! tally cannot both sit on it and the alert wins. the readout under the tiles names
+          //! whichever one is showing
+          //? room messages are NOT added in here. they are counted by the Messages tile, which
+          //? is where somebody looking for a message would look, and counting them twice in
+          //? one rail would make two numbers that never agree with anything
+          return badges.groupPendingTotal + badges.unreadPosts || badges.groups || ''
         default:
           return ''
       }
@@ -87,7 +91,7 @@ export function RailLeft() {
         case 'messages':
           return badges.unread + badges.unreadGroups > 0
         case 'groups':
-          return badges.groupPendingTotal > 0
+          return badges.groupPendingTotal + badges.unreadPosts > 0
         default:
           return false
       }
@@ -201,7 +205,9 @@ export function RailLeft() {
   const infoCount = infoChannel ? countFor(infoChannel.id) : ''
   //? "pending" and not "groups" while the tile is showing notifications, so the number under
   //? the tiles is never labelled as the thing it is not
-  const infoLabel = shown === 'groups' && alerting('groups') ? 'pending' : (COUNT_LABEL[shown] ?? '')
+  //? "waiting" rather than "pending", because the number is now two things added together:
+  //? notifications to answer and posts nobody has read
+  const infoLabel = shown === 'groups' && alerting('groups') ? 'waiting' : (COUNT_LABEL[shown] ?? '')
 
   return (
     <nav className="rail-l" aria-label="Primary">

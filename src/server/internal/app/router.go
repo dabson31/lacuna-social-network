@@ -41,6 +41,11 @@ func mountUploads(mux *http.ServeMux, s shared) {
 func mountAuth(mux *http.ServeMux, d Dependencies, s shared) {
 	store := auth.NewStore(d.DB)
 	svc := auth.NewService(store, s.sessions, s.uploads)
+	// the hub goes in as an auth.Sockets, so logging out can hang up on the websocket that
+	// session opened and literally nothing else — it cannot register, broadcast or read
+	// ! this is the one wire that stops a socket outliving its login. without it the session
+	// ! row disappears and the connection carries on as if nothing happened
+	svc.Sockets = s.hub
 	h := auth.NewHandler(svc, s.sessions, d.Log)
 
 	mux.HandleFunc("POST /api/auth/register", h.Register)
@@ -114,6 +119,9 @@ func mountGroups(mux *http.ServeMux, d Dependencies, s shared) *groups.Service {
 	store := groups.NewStore(d.DB)
 	svc := groups.NewService(store, s.uploads)
 	svc.Bus = s.bus
+	// the hub goes in as a groups.Pusher, so a new post reaches the members who are online
+	// the same way a group message does, and the module still cannot touch a connection
+	svc.Push = s.hub
 	h := groups.NewHandler(svc, d.Log)
 
 	mux.Handle("POST /api/groups", s.requireAuth(h.Create))
@@ -133,6 +141,7 @@ func mountGroups(mux *http.ServeMux, d Dependencies, s shared) *groups.Service {
 
 	mux.Handle("POST /api/groups/{id}/posts", s.requireAuth(h.CreatePost))
 	mux.Handle("GET /api/groups/{id}/posts", s.requireAuth(h.Posts))
+	mux.Handle("POST /api/groups/{id}/posts/read", s.requireAuth(h.MarkPostsRead))
 	mux.Handle("POST /api/groups/{id}/posts/{postID}/comments", s.requireAuth(h.CreateComment))
 	mux.Handle("GET /api/groups/{id}/posts/{postID}/comments", s.requireAuth(h.Comments))
 
@@ -194,6 +203,15 @@ func mountNotifications(mux *http.ServeMux, d Dependencies, s shared) {
 	s.bus.Subscribe(events.GroupInvited, record)
 	s.bus.Subscribe(events.GroupJoinRequested, record)
 	s.bus.Subscribe(events.EventCreated, record)
+
+	// the retraction half. a kind wired HERE instead of to record is one that deletes a
+	// notification rather than writing one, and the separation is what keeps a bus kind that
+	// is not a notification type out of the insert path
+	// ! this is the only line coupling "a follow request was withdrawn" to "that notice goes
+	// ! away". follows publishes without naming notifications, notifications subscribes
+	// ! without naming follows, and the two meet here and nowhere else
+	forget := func(ctx context.Context, e events.Event) { _ = svc.Forget(ctx, e) }
+	s.bus.Subscribe(events.FollowRequestCancelled, forget)
 
 	mux.Handle("GET /api/notifications", s.requireAuth(h.List))
 	mux.Handle("POST /api/notifications/{id}/read", s.requireAuth(h.MarkRead))

@@ -18,7 +18,11 @@ export const WsFrame = {
   DmMessage: 'dm.message',
   DmTyping: 'dm.typing',
   GroupMessage: 'group.message',
+  /** groups.FrameGroupPost — a post appearing in a group the reader belongs to */
+  GroupPost: 'group.post',
   NotificationNew: 'notification.new',
+  /** notifications.FrameNotificationGone — notifications that stopped being true */
+  NotificationGone: 'notification.gone',
   Ping: 'ping',
   Pong: 'pong',
 } as const

@@ -44,7 +44,22 @@ type Feed struct {
 	GroupUnread []GroupUnread `json:"group_unread"`
 }
 
-// the frame type this module owns, mirrored in src/shared/constants/ws.ts
-// ! this is the upgrade from "fetch on load" to live: the same row that gets stored also
+// the frame types this module owns, mirrored in src/shared/constants/ws.ts
+// ! the first is the upgrade from "fetch on load" to live: the same row that gets stored also
 // ! goes down the socket, so the bell lights up without a refresh
-const FrameNotificationNew = "notification.new"
+// ! the second is its opposite and exists for the same reason. a notification can stop being
+// ! true while the reader is looking at it — the sender withdraws the follow request — and a
+// ! row that was deleted on the server but is still drawn in the panel is worse than one that
+// ! arrived late: clicking it answers 404
+const (
+	FrameNotificationNew  = "notification.new"
+	FrameNotificationGone = "notification.gone"
+)
+
+// Gone is the payload of FrameNotificationGone: the notifications that stopped existing.
+// ? a list and not one id per frame, because a retraction can clear more than one row — the
+// ? documented write race can leave two notifications pointing at the same follows row — and
+// ? one frame per retraction keeps the client's handler a single state update
+type Gone struct {
+	IDs []int64 `json:"ids"`
+}

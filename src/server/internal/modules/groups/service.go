@@ -9,6 +9,7 @@ import (
 
 	"social/src/server/internal/platform/events"
 	"social/src/server/internal/platform/httpx"
+	"social/src/server/internal/platform/realtime"
 	"social/src/server/internal/platform/storage"
 )
 
@@ -26,6 +27,9 @@ type Service struct {
 	// Bus is optional and set during wiring, group notifications go through it, a nil Bus
 	// means no notifications are emitted
 	Bus *events.Bus
+	// Push is wired at startup the same way the bus is. nil means a new post is still
+	// stored and still counted on the next load, the number just does not move on its own
+	Push Pusher
 }
 
 func NewService(store *Store, uploads *storage.Store) *Service {
@@ -110,7 +114,32 @@ func (s *Service) CreatePost(ctx context.Context, groupID, authorID int64, in Gr
 		}
 		return GroupPost{}, err
 	}
-	return findPost(s.store.posts(ctx, groupID))(id), nil
+	post := findPost(s.store.posts(ctx, groupID))(id)
+
+	//! the row is committed first and pushed second, best effort, exactly as chat does it:
+	//! the rest is the record and the socket is a live upgrade on top of it. a member who is
+	//! offline still finds the post, and their unread count still counts it, because the
+	//! count is read off a watermark in sql rather than off anything this push does
+	//? sent to every member INCLUDING the author, so their other tabs stop showing the post
+	//? as unread too. their own post is excluded from the count by the query, not by the
+	//? fan-out, which is the same split group messages use
+	if s.Push != nil && post.ID != 0 {
+		if ids, err := s.store.memberIDs(ctx, groupID, 0); err == nil {
+			if frame, err := realtime.Encode(FrameGroupPost, post); err == nil {
+				s.Push.SendToUsers(ids, frame)
+			}
+		}
+	}
+	return post, nil
+}
+
+// MarkPostsRead moves the caller's watermark to the newest post, which is what clears the
+// number next to the group. members only, and the store enforces that too
+func (s *Service) MarkPostsRead(ctx context.Context, groupID, userID int64) error {
+	if _, err := s.requireMember(ctx, groupID, userID); err != nil {
+		return err
+	}
+	return s.store.markPostsRead(ctx, groupID, userID)
 }
 
 func (s *Service) Posts(ctx context.Context, groupID, viewerID int64) ([]GroupPost, error) {

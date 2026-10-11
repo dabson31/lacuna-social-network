@@ -66,6 +66,15 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, r, err)
 		return
 	}
+	// the member list is only filled for members, so for everyone else it is a nil slice —
+	// and a nil slice marshals to null, not []
+	// ! every other list route in this api does the same conversion, and this was the one that
+	// ! did not: GroupDetail.members is typed Member[] on the other side, so a null there is
+	// ! the contract lying. the page only reads it behind an isMember check today, which is
+	// ! the single reason it has never crashed on .map
+	if g.Members == nil {
+		g.Members = []Member{}
+	}
 	httpx.WriteJSON(w, http.StatusOK, g)
 }
 
@@ -223,6 +232,23 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, p)
+}
+
+// POST /api/groups/{id}/posts/read
+// ? the mirror of chat's mark-read, and it answers 204 for the same reason: there is nothing
+// ? to hand back, the next read of the group carries the cleared count
+func (h *Handler) MarkPostsRead(w http.ResponseWriter, r *http.Request) {
+	uid, _ := session.UserID(r.Context())
+	gid, err := idParam(r, "id")
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "group id must be a number")
+		return
+	}
+	if err := h.svc.MarkPostsRead(r.Context(), gid, uid); err != nil {
+		h.writeErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /api/groups/{id}/posts

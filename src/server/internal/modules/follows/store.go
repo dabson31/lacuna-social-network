@@ -57,14 +57,28 @@ func (s *Store) insert(ctx context.Context, followerID, followeeID int64, status
 }
 
 // remove deletes the row in either direction of status, it doubles as cancel request
-// and as unfollow, the rows affected tell the service whether there was anything there
-func (s *Store) remove(ctx context.Context, followerID, followeeID int64) (int64, error) {
-	res, err := s.db.ExecContext(ctx,
-		`DELETE FROM follows WHERE follower_id = ? AND followee_id = ?`, followerID, followeeID)
-	if err != nil {
-		return 0, fmt.Errorf("remove follow: %w", err)
+// and as unfollow, errNotFollowing means there was nothing there to delete
+//
+// ! it hands back the deleted row's id and status because the two cases are not the same
+// ! event: withdrawing a PENDING request retracts a notification somebody is still being
+// ! shown, while unfollowing an ACCEPTED follow retracts nothing — the request it came from
+// ! was answered, and that answer is history the reader is entitled to keep
+//
+// ? RETURNING, so the status is read off the row that was actually deleted rather than by a
+// ? SELECT before the DELETE. two unfollows racing would both pass that SELECT and both
+// ? publish, and the second would be publishing about a row the first already removed. this
+// ? is the same reasoning that keeps the author scope inside the post delete's own WHERE
+func (s *Store) remove(ctx context.Context, followerID, followeeID int64) (id int64, status string, err error) {
+	err = s.db.QueryRowContext(ctx,
+		`DELETE FROM follows WHERE follower_id = ? AND followee_id = ? RETURNING id, status`,
+		followerID, followeeID).Scan(&id, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", errNotFollowing
 	}
-	return res.RowsAffected()
+	if err != nil {
+		return 0, "", fmt.Errorf("remove follow: %w", err)
+	}
+	return id, status, nil
 }
 
 // requestParties returns who sent and who received a given follow row plus its status,

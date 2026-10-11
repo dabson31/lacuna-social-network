@@ -3,7 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { WS_PATH, WsFrame } from '@shared/constants/ws'
 import { assertNever, parseServerFrame, type ClientFrame, type ServerFrame } from '@shared/contracts/ws'
-import { API_BASE } from '@/lib/api/client'
+import * as api from '@/lib/api/client'
+import { isApiError } from '@/lib/api/errors'
 import { useSession } from '@/lib/session/SessionProvider'
 
 /**
@@ -44,10 +45,20 @@ const SocketContext = createContext<SocketContextValue | null>(null)
 const PING_MS = 25_000
 const LOG_MAX = 6
 
+/**
+ * the close code the server sends when the session behind this socket is gone — a logout in
+ * another tab, or the session's own ttl running out.
+ * ! 1008 is policy violation, and it is the only way this tab can find out. the session lives
+ * ! in one row shared by every tab of the browser, while `state` is per tab and in memory, so
+ * ! the tab that did not click logout has nothing else to go on: it is idle in a chat, makes
+ * ! no rest call, and the global 401 hook never fires
+ */
+const CLOSED_BY_SERVER = 1008
+
 function kindOf(type: string): FrameLogEntry['kind'] {
   if (type === WsFrame.DmMessage || type === WsFrame.DmTyping) return 'dm'
-  if (type === WsFrame.GroupMessage) return 'grp'
-  if (type === WsFrame.NotificationNew) return 'ntf'
+  if (type === WsFrame.GroupMessage || type === WsFrame.GroupPost) return 'grp'
+  if (type === WsFrame.NotificationNew || type === WsFrame.NotificationGone) return 'ntf'
   return ''
 }
 
@@ -58,10 +69,14 @@ function summarise(frame: ServerFrame): string {
       return `from ${frame.payload.sender_id} · ${frame.payload.content.length} bytes`
     case WsFrame.GroupMessage:
       return `group ${frame.payload.group_id} · from ${frame.payload.sender_id}`
+    case WsFrame.GroupPost:
+      return `group ${frame.payload.group_id} · post ${frame.payload.id}`
     case WsFrame.DmTyping:
       return `peer ${frame.payload.from_user_id}`
     case WsFrame.NotificationNew:
       return `${frame.payload.type} · actor ${frame.payload.actor_id}`
+    case WsFrame.NotificationGone:
+      return `${frame.payload.ids.length} retracted`
     case WsFrame.Pong:
       return 'keepalive'
     default:
@@ -70,7 +85,7 @@ function summarise(frame: ServerFrame): string {
 }
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { state } = useSession()
+  const { state, signOut } = useSession()
   const [status, setStatus] = useState<SocketStatus>('idle')
   const [log, setLog] = useState<FrameLogEntry[]>([])
   const [framesIn, setFramesIn] = useState(0)
@@ -90,6 +105,16 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const giveUp = useRef(false)
   const pausedRef = useRef(paused)
   pausedRef.current = paused
+  //? held in a ref rather than taken as a dependency of connect: signOut comes off a memo
+  //? keyed on the session state, so depending on it would rebuild connect every time the
+  //? session changes and the effect below would tear the socket down and build a new one
+  const signOutRef = useRef(signOut)
+  signOutRef.current = signOut
+  //! set when the provider is coming down, which happens on every logout: the shell unmounts
+  //! as the router leaves (main). a close event fires AFTER the cleanup has run, so without
+  //! this the handler schedules a reconnect for a provider that no longer exists — and that
+  //! attempt carries no cookie, fails, and schedules the next one
+  const torn = useRef(false)
 
   const appendLog = useCallback((type: string, payload: string, outbound: boolean) => {
     if (pausedRef.current) return
@@ -113,11 +138,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   )
 
   const connect = useCallback(() => {
-    if (giveUp.current) return
+    if (giveUp.current || torn.current) return
     //! no token in the query string, ever. the handshake is an ordinary GET and the browser
     //! attaches the sid cookie to it on its own, which is the whole reason the gateway can sit
     //! behind requireAuth. a token in the url ends up in access logs, history and Referer
-    const url = API_BASE.replace(/^http/, 'ws') + WS_PATH
+    const url = api.API_BASE.replace(/^http/, 'ws') + WS_PATH
     setStatus(attempt.current === 0 ? 'connecting' : 'reconnecting')
 
     let sock: WebSocket
@@ -129,7 +154,10 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     }
     ws.current = sock
 
+    let opened = false
+
     sock.onopen = () => {
+      opened = true
       attempt.current = 0
       setStatus('open')
       pingTimer.current = setInterval(() => {
@@ -160,13 +188,46 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       if (pingTimer.current) clearInterval(pingTimer.current)
       pingTimer.current = null
       ws.current = null
-      //? 1008 policy violation and 1011 are what a rejected handshake looks like from here.
-      //? the session provider's 401 hook handles the redirect, this only has to stop retrying
-      if (ev.code === 1008) {
+      //? nothing to reconnect to and nobody to tell: this provider is already gone
+      if (torn.current) return
+
+      /**
+       * ! the session that authenticated this socket is gone — somebody logged out, in this
+       * ! tab or another one, or the ttl ran out. the socket is the only thing that can tell
+       * ! this tab, because the session is one row shared by every tab while the react state
+       * ! is per tab, and a tab sitting in a chat makes no rest call to trip the 401 hook
+       * ! so this is not only "stop retrying": the state has to go anonymous, which is what
+       * ! (main)/layout.tsx redirects on. leaving it authenticated is the bug — the tab stays
+       * ! in the chat it is no longer entitled to and keeps sending typing notices
+       */
+      if (ev.code === CLOSED_BY_SERVER) {
         giveUp.current = true
         setStatus('closed')
+        signOutRef.current()
         return
       }
+
+      /**
+       * ! a handshake refused BEFORE the upgrade never becomes a websocket, so the browser
+       * ! reports 1006 and no reason — the same thing a dropped wifi looks like. the one
+       * ! difference available is that a refused handshake never fired onopen
+       * ? so ask the only thing that can actually answer. a 401 from `me` is a dead session and
+       * ? the tab signs out; anything else, including the server being down, is left to the
+       * ? backoff. `me` is exempt from the global 401 hook on purpose, which is why the status
+       * ? is checked here rather than relying on it firing
+       */
+      if (!opened) {
+        void api
+          .json('/api/auth/me')
+          .catch((e: unknown) => {
+            if (isApiError(e) && e.status === 401) {
+              giveUp.current = true
+              setStatus('closed')
+              signOutRef.current()
+            }
+          })
+      }
+
       scheduleReconnect()
     }
 
@@ -191,10 +252,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     //! cookie and the handshake comes back 401, which then looks like the socket being broken
     if (state.status !== 'authenticated') return
     giveUp.current = false
+    torn.current = false
     attempt.current = 0
     connect()
 
     return () => {
+      torn.current = true
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       if (pingTimer.current) clearInterval(pingTimer.current)
       const sock = ws.current

@@ -214,8 +214,10 @@ func (m RequireAuth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// r.WithContext makes a copy of the request carrying the user id; handlers read it with session.UserID
-	ctx := session.WithUserID(r.Context(), sess.UserID)
+	// r.WithContext makes a copy of the request carrying the session; handlers read the user
+	// id out of it with session.UserID, and the two things that care which session it is —
+	// logout and the websocket handshake — read the rest with session.Current
+	ctx := session.WithSession(r.Context(), sess)
 	m.Next.ServeHTTP(w, r.WithContext(ctx))
 }
 

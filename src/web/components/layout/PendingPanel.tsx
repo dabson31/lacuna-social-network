@@ -5,7 +5,8 @@ import { NOTIFICATION_LABEL } from '@shared/constants/domain'
 import type { NotificationRow } from '@shared/contracts/notifications'
 import { Avatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
-import { resolveNotification, verbsFor, describeNotification } from '@/features/notifications/actions'
+import { isStale, resolveNotification, verbsFor, describeNotification } from '@/features/notifications/actions'
+import { markRead } from '@/features/notifications/api'
 import { useBadges } from './BadgeProvider'
 
 /**
@@ -32,9 +33,17 @@ export function PendingPanel() {
       toast(`${NOTIFICATION_LABEL[n.type]} ${accept ? 'accepted' : 'declined'} · ${n.actor_name}`)
       //? a group kind changes membership, so the group tile and any open group page are stale
       if (n.type === 'group_invite' || n.type === 'group_join_request') reloadGroups()
-    } catch {
-      toast('that did not go through')
-      reloadNotifications()
+    } catch (err: unknown) {
+      //! a stale row is retired instead of being left in the queue. it points at something
+      //! that is already gone, so the only thing another click can do is fail again
+      if (isStale(err)) {
+        dropNotification(n.id)
+        void markRead(n.id).catch(() => {})
+        toast(`${NOTIFICATION_LABEL[n.type]} · already dealt with`)
+      } else {
+        toast('that did not go through')
+        reloadNotifications()
+      }
     } finally {
       setBusy(null)
     }

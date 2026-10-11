@@ -92,6 +92,15 @@ export function createGroupPost(groupId: number, body: FormData): Promise<GroupP
   return api.form<GroupPost>(`/api/groups/${groupId}/posts`, body)
 }
 
+/**
+ * clears this group's unread post count by moving the caller's watermark to the newest post.
+ * ! the same shape as marking a chat room read, and for the same reason: unread posts are one
+ * ! number per member, not a read flag per post per member
+ */
+export function markGroupPostsRead(groupId: number): Promise<void> {
+  return api.json<void>(`/api/groups/${groupId}/posts/read`, { method: 'POST' })
+}
+
 export function listGroupComments(groupId: number, postId: number): Promise<GroupComment[]> {
   return api.json<GroupComment[]>(`/api/groups/${groupId}/posts/${postId}/comments`)
 }

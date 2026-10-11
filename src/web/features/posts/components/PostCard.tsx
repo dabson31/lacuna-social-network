@@ -32,6 +32,7 @@ export function PostCard({
   loadComments,
   submitComment,
   onDelete,
+  standalone = false,
 }: {
   post: Post
   selfId: number
@@ -40,8 +41,15 @@ export function PostCard({
   loadComments: (postId: number) => Promise<Comment[]>
   submitComment: (postId: number, body: FormData) => Promise<Comment>
   onDelete?: (postId: number) => Promise<void>
+  /**
+   * this card IS the page, at /posts/{id}.
+   * ? one prop rather than two, because the two things it changes are the same decision: the
+   * ? thread opens without being asked, since reading the replies is why you came, and the
+   * ? "open" action goes, since it would navigate to the page you are already on
+   */
+  standalone?: boolean
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(standalone)
   const [meta, setMeta] = useState(false)
   const [mirrored, setMirrored] = useState(false)
   const [count, setCount] = useState(post.comment_count)
@@ -138,6 +146,19 @@ export function PostCard({
           >
             mirror <b>{mirrored ? 1 : 0}</b>
           </button>
+        )}
+
+        {/*
+          ! the post's own page. the card had exactly one way out of it before — the author's
+          ! name — so the only thing you could open from the feed was the person who wrote it
+          ? a NavButton and not a Link: `.act` is styled on the element in places and a <button>
+          ? is what the footer's other three actions are, so an <a> here would be the one
+          ? underlined blue item in the row
+        */}
+        {!standalone && (
+          <NavButton className="act" href={`/posts/${post.id}`} title={`Open post ${post.id}`}>
+            open
+          </NavButton>
         )}
 
         <button

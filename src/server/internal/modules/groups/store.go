@@ -59,22 +59,36 @@ func (s *Store) createGroup(ctx context.Context, creatorID int64, in CreateGroup
 
 // the shared select for a group, it counts members and left joins the caller's own row
 // so one query yields the group and how the caller stands with it, me can be null
+// ! named parameters, not positional. the unread subquery sits in the SELECT list, which is
+// ! BEFORE the join that also needs the caller's id, so with ? the arguments would have to be
+// ! passed in an order that has nothing to do with the order they are written in. sqlite
+// ! refuses to mix the two styles, which is why the WHERE below is :gid as well
+// ? the unread count is gated on membership rather than left to COALESCE: a stranger has no
+// ? member row, so their watermark would read as 0 and every post in the group would count as
+// ? unread for somebody who is not allowed to see a single one of them
 const selectGroup = `
 	SELECT g.id, g.creator_id, g.title, g.description, g.join_policy, g.created_at,
 	       (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id AND m.status = 'member') AS member_count,
-	       COALESCE(me.status, ''), COALESCE(me.role, '')
+	       COALESCE(me.status, ''), COALESCE(me.role, ''),
+	       CASE WHEN me.status = 'member' THEN (
+	           SELECT COUNT(*) FROM group_posts p
+	            WHERE p.group_id = g.id
+	              AND p.id > me.last_read_post_id
+	              AND p.author_id <> :me
+	       ) ELSE 0 END AS unread_posts
 	FROM groups g
-	LEFT JOIN group_members me ON me.group_id = g.id AND me.user_id = ?`
+	LEFT JOIN group_members me ON me.group_id = g.id AND me.user_id = :me`
 
 func scanGroup(row interface{ Scan(...any) error }) (Group, error) {
 	var g Group
 	err := row.Scan(&g.ID, &g.CreatorID, &g.Title, &g.Description, &g.JoinPolicy, &g.CreatedAt,
-		&g.MemberCount, &g.MyStatus, &g.MyRole)
+		&g.MemberCount, &g.MyStatus, &g.MyRole, &g.UnreadPosts)
 	return g, err
 }
 
 func (s *Store) byID(ctx context.Context, viewerID, groupID int64) (Group, error) {
-	g, err := scanGroup(s.db.QueryRowContext(ctx, selectGroup+` WHERE g.id = ?`, viewerID, groupID))
+	g, err := scanGroup(s.db.QueryRowContext(ctx, selectGroup+` WHERE g.id = :gid`,
+		sql.Named("me", viewerID), sql.Named("gid", groupID)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, errGroupMissing
 	}
@@ -87,7 +101,7 @@ func (s *Store) byID(ctx context.Context, viewerID, groupID int64) (Group, error
 // browse lists every group, this is how a user finds a group to ask to join, each row
 // still carries the caller's own status so the ui knows which button to show
 func (s *Store) browse(ctx context.Context, viewerID int64) ([]Group, error) {
-	rows, err := s.db.QueryContext(ctx, selectGroup+` ORDER BY g.id DESC`, viewerID)
+	rows, err := s.db.QueryContext(ctx, selectGroup+` ORDER BY g.id DESC`, sql.Named("me", viewerID))
 	if err != nil {
 		return nil, fmt.Errorf("browse groups: %w", err)
 	}
@@ -252,6 +266,23 @@ func (s *Store) addPost(ctx context.Context, groupID, authorID int64, content st
 		return 0, fmt.Errorf("add group post: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+// markPostsRead moves this member's watermark up to the newest post in the group.
+// ! the same shape as chat's setGroupWatermark, deliberately: COALESCE covers a group nobody
+// ! has posted in yet, and the status check means a pending invite cannot be used to mark a
+// ! group read — only a member has anything to be behind in
+func (s *Store) markPostsRead(ctx context.Context, groupID, userID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE group_members
+		    SET last_read_post_id =
+		        COALESCE((SELECT MAX(id) FROM group_posts WHERE group_id = :gid), 0)
+		  WHERE group_id = :gid AND user_id = :uid AND status = 'member'`,
+		sql.Named("gid", groupID), sql.Named("uid", userID))
+	if err != nil {
+		return fmt.Errorf("mark group posts read: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) posts(ctx context.Context, groupID int64) ([]GroupPost, error) {

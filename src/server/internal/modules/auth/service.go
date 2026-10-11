@@ -25,6 +25,9 @@ type Service struct {
 	store   *Store
 	session *session.Store
 	uploads *storage.Store
+	// Sockets is wired at startup the same way the bus and the hub are. nil means a logout
+	// still destroys the session row, it just cannot hang up on the socket that row opened
+	Sockets Sockets
 }
 
 func NewService(store *Store, sessions *session.Store, uploads *storage.Store) *Service {
@@ -102,8 +105,25 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (User, session.Sessi
 	return u, sess, nil
 }
 
-func (s *Service) Logout(ctx context.Context, sessionID string) error {
-	return s.session.Destroy(ctx, sessionID)
+// Logout ends one login: the session row goes, and so does any websocket that row
+// authenticated.
+// ! deleting the row is not enough on its own, and that is the bug this fixes. a socket is
+// ! authenticated once, at the handshake, and then nothing ever re-checks it — so a second
+// ! tab of the logged-out account kept its connection, kept receiving fan-out and kept being
+// ! allowed to send, which is how "is typing" arrived from an account that had logged out
+// ! the order matters: destroy first, then close. closing first leaves a window where the
+// ! client reconnects and the handshake succeeds against a session that is still alive
+// ? Sockets is nil in any build without the hub wired. the row is still gone, so the next
+// ? request on that cookie is a 401 either way — the live connection is the only thing that
+// ? needs telling
+func (s *Service) Logout(ctx context.Context, userID int64, sessionID string) error {
+	if err := s.session.Destroy(ctx, sessionID); err != nil {
+		return err
+	}
+	if s.Sockets != nil {
+		s.Sockets.CloseSession(userID, sessionID)
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID int64) (User, error) {

@@ -1,19 +1,22 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavButton } from '@/components/ui/NavButton'
 import type { GroupPost } from '@shared/contracts/groups'
 import { Avatar } from '@/components/ui/Avatar'
 import { Empty, Loading } from '@/components/ui/Empty'
 import { ErrorView } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
+import { useBadges } from '@/components/layout/BadgeProvider'
+import { useFrame } from '@/lib/realtime/SocketProvider'
+import { WsFrame } from '@shared/constants/ws'
 import { LIMITS, runeLength } from '@/lib/utils/count'
 import { submitOnEnter } from '@/lib/utils/keys'
 import { age } from '@/lib/utils/time'
 import { Attachment } from '@/features/posts/components/Attachment'
 import { Thread } from '@/features/posts/components/Thread'
 import { ImagePicker } from '@/features/auth/components/ImagePicker'
-import { createGroupComment, createGroupPost, listGroupComments, listGroupPosts } from '../api'
+import { createGroupComment, createGroupPost, listGroupComments, listGroupPosts, markGroupPostsRead } from '../api'
 
 /**
  * group posts, members only.
@@ -36,16 +39,59 @@ export function GroupPostFeed({
   const [open, setOpen] = useState<number | null>(null)
   const [content, setContent] = useState('')
   const [busy, setBusy] = useState(false)
+  const { reloadGroups } = useBadges()
   //? enter submits through the form rather than through a click, so the handler needs a
   //? handle on it. same shape as the feed composer, which is the point
   const formRef = useRef<HTMLFormElement>(null)
   const toast = useToast()
 
+  /**
+   * clearing the number, which is a separate thing from drawing the posts.
+   * ! it has to run again for every post that arrives while this list is on screen, or the
+   * ! count climbs for a group the reader is looking straight at — the watermark only moves
+   * ! when something tells it to
+   */
+  const markRead = useCallback(() => {
+    markGroupPostsRead(groupId)
+      .then(reloadGroups)
+      .catch(() => {
+        /* the posts are read either way, the number simply clears on the next load */
+      })
+  }, [groupId, reloadGroups])
+
   const load = () => {
-    listGroupPosts(groupId).then(setPosts).catch(setError)
+    listGroupPosts(groupId)
+      .then((list) => {
+        setPosts(list)
+        /**
+         * ! read means on screen, so the watermark moves here and not when the group page
+         * ! mounts: a non-member never gets this far, and neither does anyone who opened the
+         * ! events or members tab instead
+         * ? the group list is reloaded after it, because the number this just cleared is
+         * ? drawn from Group.unread_posts and the shell is still holding the old one
+         */
+        markRead()
+      })
+      .catch(setError)
   }
 
   useEffect(load, [groupId])
+
+  /**
+   * a post from somebody else, arriving while this list is open.
+   * ? deduped by id because the author's own 201 already put their post in the list and the
+   * ? socket pushes the same row to them as well, by design — the same rule the chat thread
+   * ? uses for its own messages
+   */
+  useFrame(
+    WsFrame.GroupPost,
+    (p) => {
+      if (p.group_id !== groupId) return
+      setPosts((prev) => (prev === null ? [p] : prev.some((x) => x.id === p.id) ? prev : [p, ...prev]))
+      markRead()
+    },
+    [groupId, markRead],
+  )
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -57,7 +103,10 @@ export function GroupPostFeed({
     setBusy(true)
     try {
       const created = await createGroupPost(groupId, body)
-      setPosts((prev) => [created, ...(prev ?? [])])
+      //? the socket pushes this same row back to the author, so the frame handler above
+      //? dedupes it by id. prepending here as well is what makes it appear without waiting
+      //? for the round trip through the hub
+      setPosts((prev) => (prev ?? []).some((x) => x.id === created.id) ? (prev ?? []) : [created, ...(prev ?? [])])
       setContent('')
       formEl.reset()
       toast('posted to the group')

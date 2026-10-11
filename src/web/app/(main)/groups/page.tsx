@@ -18,8 +18,16 @@ import { markRead } from '@/features/notifications/api'
  * ! than one plus N. the button comes from those two fields and never from a membership probe
  */
 export default function GroupsPage() {
-  const { myGroups, reloadGroups, inbox, groupPending, groupPendingTotal, notifications, dropNotification } =
-    useBadges()
+  const {
+    myGroups,
+    reloadGroups,
+    inbox,
+    groupPending,
+    groupPendingTotal,
+    unreadPosts,
+    notifications,
+    dropNotification,
+  } = useBadges()
   const toast = useToast()
   const [open, setOpen] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
@@ -100,12 +108,13 @@ export default function GroupsPage() {
 
   /** the four membership states, each with the one action that applies */
   const actionsFor = (g: Group) => {
+    const posts = g.unread_posts ?? 0
     switch (g.my_status) {
       case MemberStatus.Member:
         return (
           <>
             <Link className="btn btn--sm" href={`/groups/${g.id}`}>
-              open group
+              open group{posts > 0 ? ` · ${posts} new` : ''}
             </Link>
             {/*
               ! the one affordance this build adds rather than ports. the design has no way to
@@ -193,6 +202,7 @@ export default function GroupsPage() {
         <span className="lbl">
           {myGroups.length} groups
           {groupPendingTotal > 0 && ` · ${groupPendingTotal} pending`}
+          {unreadPosts > 0 && ` · ${unreadPosts} new ${unreadPosts === 1 ? 'post' : 'posts'}`}
         </span>
         <div className="spacer" />
         <button className="btn btn--sm" onClick={() => setComposing((v) => !v)}>
@@ -221,6 +231,10 @@ export default function GroupsPage() {
           const isOpen = open === g.id
           const unread = unreadIn(g.id)
           const pending = pendingIn(g.id)
+          //? three different kinds of waiting, three different words. they are counted by
+          //? three different mechanisms and the subject requires at least two of them to stay
+          //? distinguishable, so they are never added together on a row
+          const posts = g.unread_posts ?? 0
           return (
             <div className="row-item" key={g.id}>
               <button
@@ -231,7 +245,7 @@ export default function GroupsPage() {
               >
                 {/*? the dot the rest of the app uses for the same thing, lit per group, by
                     either kind of waiting thing */}
-                <span className={unread || pending ? 'dot dot--on' : 'dot dot--idle'} />
+                <span className={unread || pending || posts ? 'dot dot--on' : 'dot dot--idle'} />
                 <Avatar name={g.title} size="sm" />
                 <span className="tx">
                   <span className="nm">
@@ -240,7 +254,16 @@ export default function GroupsPage() {
                     {/*? .row-unread is the stylesheet's own class for exactly this, already
                         used by the dm and group rows on /chat */}
                     {pending > 0 && <span className="row-unread">{pending} pending</span>}
-                    {unread > 0 && <span className="row-unread">{unread} new</span>}
+                    {posts > 0 && (
+                      <span className="row-unread">
+                        {posts} new {posts === 1 ? 'post' : 'posts'}
+                      </span>
+                    )}
+                    {unread > 0 && (
+                      <span className="row-unread">
+                        {unread} new {unread === 1 ? 'message' : 'messages'}
+                      </span>
+                    )}
                   </span>
                   <span className="mt">
                     {g.member_count} {g.member_count === 1 ? 'member' : 'members'}

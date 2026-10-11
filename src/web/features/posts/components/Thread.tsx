@@ -90,9 +90,26 @@ export function Thread({
   return (
     <>
       {more > 0 && (
-        <button className="act more" onClick={() => setShown((n) => n + PAGE)}>
-          load {more} more
-        </button>
+        <>
+          {/*
+            ! the label says what the click does. it used to read "load N more" where N was
+            ! every remaining reply, while the click revealed three — so on a post with twenty
+            ! replies the button said "load 17 more" and then said "load 14 more"
+          */}
+          <button className="act more" onClick={() => setShown((n) => n + PAGE)}>
+            load {Math.min(PAGE, more)} more
+          </button>
+          {/*
+            ? and the way out of clicking it six times. the comments endpoint has no limit or
+            ? offset — it already handed back every reply — so this is a reveal and not a
+            ? fetch, which is why "all" costs nothing and needs no new call
+          */}
+          {more > PAGE && (
+            <button className="act more" onClick={() => setShown(all.length)}>
+              load all {more}
+            </button>
+          )}
+        </>
       )}
 
       {visible.map((c) => (

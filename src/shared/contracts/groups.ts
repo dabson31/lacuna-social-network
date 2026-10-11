@@ -16,6 +16,14 @@ export interface Group {
   member_count: number
   my_status: MemberStatus
   my_role: MemberRole
+  /**
+   * posts added since this caller last read the group, their own excluded, and 0 for anyone
+   * who is not a member.
+   * ! counted off group_members.last_read_post_id — a watermark, the same one group messages
+   * ! use. so there is no per-post read state to render, only this number, and it clears with
+   * ! POST /api/groups/{id}/posts/read rather than by looking at anything
+   */
+  unread_posts: number
 }
 
 /** groups.GroupDetail — a group plus its member list, and the list is only filled for members */
