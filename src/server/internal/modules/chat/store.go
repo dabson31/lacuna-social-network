@@ -14,9 +14,9 @@ var errNoRow = errors.New("no such message")
 // the inbox queries down below also read follows, users, groups and group_members. thats a
 // read of columns, not a module import, the same thing follows/store.go does when it reads
 // users.is_public
-//! the line this module holds is that no rule gets decided from those reads. "members only"
-//! and "you have to be connected" both go through the interfaces in ports.go, so those
-//! rules keep exactly one owner. reading rows for display is fine, deciding with them isnt
+// ! the line this module holds is that no rule gets decided from those reads. "members only"
+// ! and "you have to be connected" both go through the interfaces in ports.go, so those
+// ! rules keep exactly one owner. reading rows for display is fine, deciding with them isnt
 type Store struct {
 	db *sql.DB
 }
@@ -72,9 +72,9 @@ func (s *Store) dmByID(ctx context.Context, id int64) (DirectMessage, error) {
 // the query sorts DESC so LIMIT grabs the newest N, then we flip the slice in go. a chat
 // draws oldest at the top but you page backwards from the bottom, so one of the two has to
 // reverse and doing it in sql would need a subquery for nothing. idx_dm_pair backs the sort
-//! named params (:me) instead of ?, because me shows up four times here and three in
-//! conversations below. a miscounted ? doesnt error, it just silently answers the wrong
-//! question, which is the worst kind of bug. mattn/go-sqlite3 supports them via sql.Named
+// ! named params (:me) instead of ?, because me shows up four times here and three in
+// ! conversations below. a miscounted ? doesnt error, it just silently answers the wrong
+// ! question, which is the worst kind of bug. mattn/go-sqlite3 supports them via sql.Named
 func (s *Store) dmHistory(ctx context.Context, me, peer int64, limit int, before int64) ([]DirectMessage, error) {
 	rows, err := s.db.QueryContext(ctx, selectDM+`
 		WHERE ((m.sender_id = :me AND m.recipient_id = :peer)
@@ -106,8 +106,8 @@ func (s *Store) dmHistory(ctx context.Context, me, peer int64, limit int, before
 // markDMRead stamps everything this one peer sent me.
 // scoped to recipient_id = me so nobody can mark somebody elses messages read, and to
 // read_at IS NULL so reopening a chat keeps the original time instead of bumping it
-//? idx_dm_unread is a partial index holding only the unread rows, which is what makes this
-//? cheap no matter how much history piles up
+// ? idx_dm_unread is a partial index holding only the unread rows, which is what makes this
+// ? cheap no matter how much history piles up
 func (s *Store) markDMRead(ctx context.Context, me, peer int64) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE direct_messages SET read_at = datetime('now')
@@ -125,14 +125,14 @@ func (s *Store) markDMRead(ctx context.Context, me, peer int64) error {
 // directions of existing history. the follow halves are why a brand new mutual follow turns
 // up in the sidebar with nothing said yet, and the history halves are why a chat with a
 // public stranger doesnt disappear if neither of you ever follows the other
-//? UNION and not UNION ALL, because UNION dedupes and someone can easily be in two or three
-//? of those four lists at once
+// ? UNION and not UNION ALL, because UNION dedupes and someone can easily be in two or three
+// ? of those four lists at once
 //
 // newest grabs each peer's last message id once, then the LEFT JOIN pulls that single row's
 // content. doing it as two correlated subqueries would walk the same index twice to answer
 // one question
-//! "ORDER BY last_id IS NULL, last_id DESC" is sqlite's way of saying NULLS LAST. busiest
-//! chat at the top, people youve never messaged at the bottom in name order
+// ! "ORDER BY last_id IS NULL, last_id DESC" is sqlite's way of saying NULLS LAST. busiest
+// ! chat at the top, people youve never messaged at the bottom in name order
 func (s *Store) conversations(ctx context.Context, me int64) ([]Conversation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH peers(id) AS (
@@ -258,8 +258,8 @@ func (s *Store) setGroupWatermark(ctx context.Context, groupID, userID int64) er
 
 // groupConversations is the group half of the inbox: every room the caller is a member of,
 // its last line, and how many messages turned up past their watermark
-//! "m.sender_id <> :me" in the count is what stops your own message counting as unread in
-//! the split second between sending it and the watermark moving
+// ! "m.sender_id <> :me" in the count is what stops your own message counting as unread in
+// ! the split second between sending it and the watermark moving
 func (s *Store) groupConversations(ctx context.Context, me int64) ([]GroupConversation, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT g.id, g.title,
@@ -297,7 +297,7 @@ func (s *Store) groupConversations(ctx context.Context, me int64) ([]GroupConver
 
 // reverse flips a slice in place and hands it back, so both history functions can end on
 // one line. generic because dms and group messages are different types doing the same thing
-//? the swap walks two pointers at each other until they meet, which is why it stops at i < j
+// ? the swap walks two pointers at each other until they meet, which is why it stops at i < j
 func reverse[T any](s []T) []T {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
 		s[i], s[j] = s[j], s[i]

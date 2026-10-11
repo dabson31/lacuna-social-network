@@ -23,7 +23,7 @@ type Session struct {
 }
 
 // store keeps sessions in the sessions table, meaning they can persist a server restart
-//todo: check for browesers here
+// todo: check for browesers here
 type Store struct {
 	db     *sql.DB
 	ttl    time.Duration
@@ -103,7 +103,7 @@ func (s *Store) SetCookie(w http.ResponseWriter, sess Session) {
 	})
 }
 
-// this function tells the browser to delete the cookie right away 
+// this function tells the browser to delete the cookie right away
 func (s *Store) ClearCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     CookieName,

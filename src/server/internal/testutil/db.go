@@ -16,9 +16,9 @@ import (
 
 // NewDB opens a throwaway database and runs every migration on it, going through the
 // project's own Open and Migrate so the test exercises the real startup path
-//! a temp file and not :memory: on purpose. database/sql keeps a pool of connections and
-//! every connection to :memory: gets its OWN empty database, so a test writes on one
-//! connection and reads on another, sees nothing, and the failure looks like a broken query
+// ! a temp file and not :memory: on purpose. database/sql keeps a pool of connections and
+// ! every connection to :memory: gets its OWN empty database, so a test writes on one
+// ! connection and reads on another, sees nothing, and the failure looks like a broken query
 func NewDB(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -37,9 +37,9 @@ func NewDB(t *testing.T) *sql.DB {
 }
 
 // InsertUser puts a minimal user row in, enough to satisfy the foreign keys
-//! foreign_keys is ON in Open(), so inserting a message from a user id that doesnt exist
-//! fails with a FK error instead of quietly working. every test that touches a store needs
-//! its users to actually be there
+// ! foreign_keys is ON in Open(), so inserting a message from a user id that doesnt exist
+// ! fails with a FK error instead of quietly working. every test that touches a store needs
+// ! its users to actually be there
 func InsertUser(t *testing.T, db *sql.DB, id int64, firstName string) {
 	t.Helper()
 	_, err := db.Exec(
@@ -53,8 +53,8 @@ func InsertUser(t *testing.T, db *sql.DB, id int64, firstName string) {
 
 // migrationsDir walks up from this source file to the repo root, so a test finds the .sql
 // files no matter which directory go test happens to run it from
-//? runtime.Caller(0) gives the path of THIS file at compile time, which is the only
-//? reliable anchor, os.Getwd() would give the package being tested instead
+// ? runtime.Caller(0) gives the path of THIS file at compile time, which is the only
+// ? reliable anchor, os.Getwd() would give the package being tested instead
 func migrationsDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)

@@ -141,9 +141,9 @@ func (h *Handler) MarkGroupRead(w http.ResponseWriter, r *http.Request) {
 }
 
 // pageParams reads the cursor pair every history endpoint takes
-//! before is a message id and not an offset, because messages keep coming in while youre
-//! scrolling. with an offset the page boundary slides and you get shown the same message
-//! twice. zero means start from the newest
+// ! before is a message id and not an offset, because messages keep coming in while youre
+// ! scrolling. with an offset the page boundary slides and you get shown the same message
+// ! twice. zero means start from the newest
 func pageParams(r *http.Request) (limit int, before int64) {
 	limit, _ = strconv.Atoi(r.URL.Query().Get("limit"))
 	before, _ = strconv.ParseInt(r.URL.Query().Get("before"), 10, 64)

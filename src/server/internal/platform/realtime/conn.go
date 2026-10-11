@@ -30,7 +30,7 @@ const (
 	frameTimeout = 5 * time.Second
 )
 
-//! note: a single tab might be a problem
+// ! note: a single tab might be a problem
 // gorilla/websocket panics on concurrent writes, and
 // for example, a group message arriving while a notification is being delivered
 type Conn struct {
@@ -50,7 +50,7 @@ type Conn struct {
 func (c *Conn) UserID() int64 { return c.userID }
 
 //! geeksforgeeks:
-// Select in Go allows a goroutine to wait on multiple channel operations, enabling it to choose one that is ready to proceed. 
+// Select in Go allows a goroutine to wait on multiple channel operations, enabling it to choose one that is ready to proceed.
 // It simplifies handling multiple channels by blocking until one of the cases can run, making concurrent programming more efficient.
 
 // eif a client is so far behind that sendBuffer frames are already queued

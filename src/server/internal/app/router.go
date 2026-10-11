@@ -86,11 +86,11 @@ func mountFollows(mux *http.ServeMux, d Dependencies, s shared) *follows.Service
 
 // posts owns the feed, the three privacy levels and comments. it does its own per-post
 // visibility sql inside its store, and takes one port for the rule it does not own
-//! GET /api/users/{id}/posts lives here and not in mountUsers even though the path hangs off
-//! a user, because the thing being returned is posts and the per-post visibility rule
-//! deciding what comes back is the posts module's rule
-//! the one thing it is NOT allowed to decide for itself is whether that author's record may
-//! be browsed at all. follows owns "can A see B?", so it arrives as posts.ProfileVisibility
+// ! GET /api/users/{id}/posts lives here and not in mountUsers even though the path hangs off
+// ! a user, because the thing being returned is posts and the per-post visibility rule
+// ! deciding what comes back is the posts module's rule
+// ! the one thing it is NOT allowed to decide for itself is whether that author's record may
+// ! be browsed at all. follows owns "can A see B?", so it arrives as posts.ProfileVisibility
 func mountPosts(mux *http.ServeMux, d Dependencies, s shared, followsSvc posts.ProfileVisibility) {
 	store := posts.NewStore(d.DB)
 	svc := posts.NewService(store, s.uploads)
@@ -171,8 +171,8 @@ func mountChat(mux *http.ServeMux, d Dependencies, s shared,
 // mountRealtime puts the one socket behind requireAuth, so the session gets checked on the
 // handshake before any upgrade happens. the cookie rides along on a GET like it does
 // everywhere else, which is why no token in the query string is needed
-//! /ws sits outside /api on purpose, its not a REST resource, and the catch all 404 on
-//! /api/ in app.go would otherwise have an opinion about it
+// ! /ws sits outside /api on purpose, its not a REST resource, and the catch all 404 on
+// ! /api/ in app.go would otherwise have an opinion about it
 func mountRealtime(mux *http.ServeMux, d Dependencies, s shared, chatSvc *chat.Service) {
 	gw := realtime.NewGateway(s.hub, d.Log, d.Config.AllowedOrigin, chatSvc.Receive)
 	mux.Handle("GET /ws", s.requireAuth(gw.ServeWS))

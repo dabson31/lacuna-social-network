@@ -20,9 +20,9 @@ var (
 )
 
 // a chat line, not an essay
-//! counted in runes and not bytes, so an emoji costs one character instead of four.
-//! a byte limit would cut a message of 500 emojis off halfway through a character and
-//! leave broken utf8 in the db
+// ! counted in runes and not bytes, so an emoji costs one character instead of four.
+// ! a byte limit would cut a message of 500 emojis off halfway through a character and
+// ! leave broken utf8 in the db
 const maxMessageRunes = 2000
 
 const (
@@ -55,9 +55,9 @@ func NewService(store *Store, follows FollowChecker, profiles ProfileChecker,
 // ---- direct messages ----
 
 // SendDM saves first, then delivers.
-//! that order is the entire reliability story. the row is committed before anybody is told,
-//! so a recipient whos offline, or whose socket dies mid push, still has the message
-//! waiting for them on the next load. doing it the other way round loses messages
+// ! that order is the entire reliability story. the row is committed before anybody is told,
+// ! so a recipient whos offline, or whose socket dies mid push, still has the message
+// ! waiting for them on the next load. doing it the other way round loses messages
 func (s *Service) SendDM(ctx context.Context, senderID int64, in SendDMInput) (DirectMessage, error) {
 	content, fields := validContent(in.Content)
 	if in.RecipientID <= 0 {
@@ -131,9 +131,9 @@ func (s *Service) Inbox(ctx context.Context, me int64) (Inbox, error) {
 // requireDMAllowed is the subject's rule, and the one the audit checks by logging two
 // strangers into two browsers: you can message someone who follows you, someone you follow,
 // or anyone whose profile is public. nobody else
-//! the checks are ordered by what each one gives away. existence first so a missing user is
-//! a clean 404 instead of a confusing 403. public second because its one indexed row and it
-//! settles most cases. the follow lookup last since its the only one checking two directions
+// ! the checks are ordered by what each one gives away. existence first so a missing user is
+// ! a clean 404 instead of a confusing 403. public second because its one indexed row and it
+// ! settles most cases. the follow lookup last since its the only one checking two directions
 func (s *Service) requireDMAllowed(ctx context.Context, senderID, recipientID int64) error {
 	exists, isPublic, err := s.profiles.ProfileState(ctx, recipientID)
 	if err != nil {
@@ -213,8 +213,8 @@ func (s *Service) MarkGroupRead(ctx context.Context, groupID, userID int64) erro
 
 // requireGroupMember leans on the GroupChecker interface instead of querying group_members
 // itself, so "who counts as a member" keeps one definition over in the groups module
-//! a non member gets errNotFound and not errForbidden, we never confirm a group's chat
-//! exists to somebody outside it
+// ! a non member gets errNotFound and not errForbidden, we never confirm a group's chat
+// ! exists to somebody outside it
 func (s *Service) requireGroupMember(ctx context.Context, groupID, userID int64) error {
 	ok, err := s.groups.IsMember(ctx, groupID, userID)
 	if err != nil {
@@ -271,9 +271,9 @@ func (s *Service) push(userIDs []int64, typ string, payload any) {
 }
 
 // validContent trims, rejects empty and caps the length.
-//! it does NOT sanitise. content is stored as is in utf8 and escaped at render time by
-//! react, stripping characters here is how emojis and apostrophes get mangled and it
-//! protects nothing the output layer doesnt already handle
+// ! it does NOT sanitise. content is stored as is in utf8 and escaped at render time by
+// ! react, stripping characters here is how emojis and apostrophes get mangled and it
+// ! protects nothing the output layer doesnt already handle
 func validContent(raw string) (string, httpx.ValidationErrors) {
 	fields := httpx.ValidationErrors{}
 	content := strings.TrimSpace(raw)

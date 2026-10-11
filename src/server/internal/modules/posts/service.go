@@ -83,11 +83,11 @@ func (s *Service) Feed(ctx context.Context, viewerID, before int64, limit int) (
 // saying the record was private. the audit asks the opposite question — "are you prevented
 // from seeing a non-followed private profile" — so the profile rule applies first
 //
-//! an empty page and not an error. the profile itself must still render, because the follow
-//! button is how a reader gets out of this state, and the page already has the right copy
-//! for it: "nothing here you are allowed to read"
-//? the feed is deliberately untouched. a public post is public, which is what the subject
-//? says post privacy means, and the feed is the place that rule belongs to
+// ! an empty page and not an error. the profile itself must still render, because the follow
+// ! button is how a reader gets out of this state, and the page already has the right copy
+// ! for it: "nothing here you are allowed to read"
+// ? the feed is deliberately untouched. a public post is public, which is what the subject
+// ? says post privacy means, and the feed is the place that rule belongs to
 func (s *Service) AuthorPosts(ctx context.Context, viewerID, authorID, before int64, limit int) ([]Post, error) {
 	if viewerID != authorID {
 		if s.Profiles == nil {
@@ -192,9 +192,9 @@ func mustList(c []Comment, _ error) []Comment { return c }
 
 // Delete withdraws the caller's own post. a post that is not theirs, or not there, reads as
 // not found, the same way an invisible post does everywhere else in this module
-//! the files are unlinked after the row is committed and never before. the other order means
-//! a failed delete leaves a row pointing at an image that no longer exists, and a broken
-//! image in a feed is worse than a file nobody references
+// ! the files are unlinked after the row is committed and never before. the other order means
+// ! a failed delete leaves a row pointing at an image that no longer exists, and a broken
+// ! image in a feed is worse than a file nobody references
 func (s *Service) Delete(ctx context.Context, authorID, postID int64) error {
 	names, err := s.store.imagePaths(ctx, postID)
 	if err != nil {

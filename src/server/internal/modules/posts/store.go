@@ -233,10 +233,10 @@ func (s *Store) comments(ctx context.Context, postID int64) ([]Comment, error) {
 
 // imagePaths collects every file this post owns, its own image plus one per comment, so the
 // service can unlink them after the row is gone
-//! the rows have to be read BEFORE the delete, because the cascade takes the comments with
-//! the post and then there is nothing left to ask. collecting afterwards leaves every comment
-//! image orphaned on disk forever, which is the kind of leak nobody notices until the volume
-//! fills up
+// ! the rows have to be read BEFORE the delete, because the cascade takes the comments with
+// ! the post and then there is nothing left to ask. collecting afterwards leaves every comment
+// ! image orphaned on disk forever, which is the kind of leak nobody notices until the volume
+// ! fills up
 func (s *Store) imagePaths(ctx context.Context, postID int64) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT image_path FROM posts WHERE id = ? AND image_path IS NOT NULL
@@ -260,9 +260,9 @@ func (s *Store) imagePaths(ctx context.Context, postID int64) ([]string, error) 
 }
 
 // remove deletes a post, but only if the caller wrote it.
-//! the author check is in the WHERE and not in a separate SELECT, so there is no window
-//! between "is it yours" and "delete it". comments and post_viewers go with it through
-//! ON DELETE CASCADE, which only works because Open() sets foreign_keys = ON
+// ! the author check is in the WHERE and not in a separate SELECT, so there is no window
+// ! between "is it yours" and "delete it". comments and post_viewers go with it through
+// ! ON DELETE CASCADE, which only works because Open() sets foreign_keys = ON
 func (s *Store) remove(ctx context.Context, authorID, postID int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM posts WHERE id = ? AND author_id = ?`, postID, authorID)
 	if err != nil {

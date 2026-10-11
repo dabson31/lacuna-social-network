@@ -16,8 +16,8 @@ func NewStore(db *sql.DB) *Store {
 
 // insert writes one notification and gives back its id, entityID may be null for a kind
 // that points at nothing, the caller has already decided the recipient is not the actor
-//! it returns the id now because the service needs to read the row straight back out to
-//! push it, a notification frame with no actor name on it is useless to the frontend
+// ! it returns the id now because the service needs to read the row straight back out to
+// ! push it, a notification frame with no actor name on it is useless to the frontend
 func (s *Store) insert(ctx context.Context, userID int64, typ string, actorID int64, entityID *int64) (int64, error) {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO notifications (user_id, type, actor_id, entity_id) VALUES (?, ?, ?, ?)`,

@@ -57,6 +57,8 @@ func WriteError(w http.ResponseWriter, status int, code, msg string) {
 	WriteJSON(w, status, errorEnvelope{Error: ErrorBody{Code: code, Message: msg}})
 }
 
+//! this used to be the old impl of the validation, but instead, it can simply return the error
+//! in a struct containing all the issues, rather than hardcoding certain values
 // func WRiteValidation(w http.ResponseWriter, fields ValidationErrors) {
 // 	WriteJSON(w, http.StatusBadRequest, errorEnvelope{Error: ErrorBody{
 // 		Code:    "validation_failed",
@@ -91,7 +93,9 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 		var syntaxErr *json.SyntaxError
 		var typeErr *json.UnmarshalTypeError
 		var maxErr *http.MaxBytesError
+
 		//! cant believe im using switch in the big 26
+		// this makes sure it goes through every case of an error, before checking the exact error
 		switch {
 		case errors.Is(err, io.EOF):
 			return errors.New("Error: request body must not be empty")

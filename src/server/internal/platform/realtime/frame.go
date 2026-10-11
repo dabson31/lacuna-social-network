@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// envelop is one connection that carries chat, notifications, presence 
+// envelop is one connection that carries chat, notifications, presence
 // instead of creating a separate WS connection for every feature, we use one connection and put a type label on each message
 // meaning one socket can get: {"type":"dm.message","payload":{...}}
 type Envelope struct {

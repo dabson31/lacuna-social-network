@@ -56,7 +56,6 @@ func (s *Store) insert(ctx context.Context, followerID, followeeID int64, status
 	return res.LastInsertId()
 }
 
-
 // remove deletes the row in either direction of status, it doubles as cancel request
 // and as unfollow, the rows affected tell the service whether there was anything there
 func (s *Store) remove(ctx context.Context, followerID, followeeID int64) (int64, error) {
@@ -99,7 +98,7 @@ func (s *Store) deleteByID(ctx context.Context, followID int64) error {
 
 // isAcceptedFollower answers can viewer see owner's follower lists, true when there is
 // an accepted row from viewer to owner
-//! basically can i see someone elses
+// ! basically can i see someone elses
 func (s *Store) isAcceptedFollower(ctx context.Context, followerID, followeeID int64) (bool, error) {
 	var one int
 	err := s.db.QueryRowContext(ctx,
@@ -180,7 +179,7 @@ func (s *Store) cards(ctx context.Context, query string, id int64) ([]UserCard, 
 // connected checks if there is an accepted follow between two people, going either way.
 // either way matters because the dm rule is symmetric: you can message someone who
 // follows you just as much as someone you follow, so one query has to cover both rows
-//? the args are a, b then b, a. same pair, both directions
+// ? the args are a, b then b, a. same pair, both directions
 // isAcceptedFollower above is the one-directional version, it answers "can i see your
 // stuff", which is a different question and stays separate
 func (s *Store) connected(ctx context.Context, a, b int64) (bool, error) {

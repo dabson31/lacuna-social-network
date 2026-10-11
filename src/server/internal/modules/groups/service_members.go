@@ -169,9 +169,9 @@ func (s *Service) IsMember(ctx context.Context, groupID, userID int64) (bool, er
 // MemberIDs is the fan out list for a group chat message. it leaves nobody out, because the
 // sender's own other tabs need the message too, otherwise sending from your phone leaves
 // your laptop showing an old thread
-//! memberIDs takes an "except" id so it can skip someone, which is what CreateEvent uses to
-//! avoid notifying the creator of their own event. here we pass 0 instead, and 0 matches no
-//! user since AUTOINCREMENT starts counting at 1
+// ! memberIDs takes an "except" id so it can skip someone, which is what CreateEvent uses to
+// ! avoid notifying the creator of their own event. here we pass 0 instead, and 0 matches no
+// ! user since AUTOINCREMENT starts counting at 1
 func (s *Service) MemberIDs(ctx context.Context, groupID int64) ([]int64, error) {
 	return s.store.memberIDs(ctx, groupID, 0)
 }

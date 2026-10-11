@@ -16,8 +16,8 @@ const (
 	EventCreated       = "event_created"
 )
 
-//! Note:
-// RecipientID is who should hear about it 
+// ! Note:
+// RecipientID is who should hear about it
 // ActorID is who caused it
 // EntityID points at the row it is about, a follow, a group or an event
 type Event struct {
@@ -51,10 +51,9 @@ func (b *Bus) Subscribe(kind string, h Handler) {
 	b.subs[kind] = append(b.subs[kind], h)
 }
 
-//! this is basically if something gets published, whoever is part of it, their handler itself will run 
+// ! this is basically if something gets published, whoever is part of it, their handler itself will run
 // since reading a map while another goroutine writes to it crashes it, it needs to be locked
 // each handler runs in its own goroutine with its own recover so one panic cannot take the process down
-// 
 func (b *Bus) Publish(ctx context.Context, e Event) {
 	b.mu.RLock()
 	handlers := b.subs[e.Kind]

@@ -9,7 +9,7 @@ import (
 
 type Service struct {
 	store *Store
-	Bus *events.Bus
+	Bus   *events.Bus
 }
 
 func NewService(store *Store) *Service {
@@ -18,7 +18,7 @@ func NewService(store *Store) *Service {
 
 // Follow starts following target, a public target is accepted straight away while a
 // private one becomes a pending request, the returned status is which of the two happened
-//! a check has been added for: the caller cannot follow themselves and the target has to exist
+// ! a check has been added for: the caller cannot follow themselves and the target has to exist
 func (s *Service) Follow(ctx context.Context, followerID, targetID int64) (FollowResult, error) {
 	if followerID == targetID {
 		return FollowResult{}, errSelf
@@ -113,9 +113,9 @@ func (s *Service) Following(ctx context.Context, viewerID, ownerID int64) ([]Use
 
 // CanViewProfile is canView with a bool instead of a sentinel, for the other features that
 // need the answer rather than the refusal.
-//! this is the rule's one public entry point and it must stay that way. "can A see B?" gates
-//! the profile, the social graph AND the author's post list, and three copies of a three part
-//! rule is three chances for one of them to drift into leaking a private account
+// ! this is the rule's one public entry point and it must stay that way. "can A see B?" gates
+// ! the profile, the social graph AND the author's post list, and three copies of a three part
+// ! rule is three chances for one of them to drift into leaking a private account
 func (s *Service) CanViewProfile(ctx context.Context, viewerID, ownerID int64) (bool, error) {
 	err := s.canView(ctx, viewerID, ownerID)
 	//? both refusals collapse to a plain no, and only here. Followers/Following still need
@@ -158,9 +158,9 @@ func (s *Service) canView(ctx context.Context, viewerID, ownerID int64) error {
 
 // IsConnected is for other features that need the follow relation without caring how its
 // stored. chat calls it through its own FollowChecker interface, so chat never imports us
-//! note: this only answers the question, it doesnt decide anything with the answer.
-//! "two unconnected users cant chat" is chat's rule and lives in chat's service, otherwise
-//! we'd end up with follow rules spread over two modules
+// ! note: this only answers the question, it doesnt decide anything with the answer.
+// ! "two unconnected users cant chat" is chat's rule and lives in chat's service, otherwise
+// ! we'd end up with follow rules spread over two modules
 func (s *Service) IsConnected(ctx context.Context, a, b int64) (bool, error) {
 	return s.store.connected(ctx, a, b)
 }

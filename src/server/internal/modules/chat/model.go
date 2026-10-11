@@ -5,8 +5,8 @@ import "time"
 // the frame types this module owns. they live here and not in platform/realtime because
 // realtime is not supposed to know what a "dm" is, thats the whole thing keeping it a
 // transport instead of a feature
-//? these are mirrored in src/shared/constants/ws.ts. if one side changes and the other
-//? doesnt, nothing errors, the frontend just quietly stops reacting to a frame type
+// ? these are mirrored in src/shared/constants/ws.ts. if one side changes and the other
+// ? doesnt, nothing errors, the frontend just quietly stops reacting to a frame type
 const (
 	FrameDMMessage    = "dm.message"
 	FrameDMTyping     = "dm.typing"
@@ -16,9 +16,9 @@ const (
 // DirectMessage is one direct_messages row joined with whoever sent it, so a frame pushed
 // over the socket and a row fetched from history are the exact same shape. the frontend
 // then needs one renderer instead of two
-//! ReadAt is a pointer because the column is NULL until the recipient opens the chat.
-//! scanning a NULL into a plain time.Time blows up at runtime with
-//! "converting NULL to time.Time is unsupported", so every nullable column below is a pointer
+// ! ReadAt is a pointer because the column is NULL until the recipient opens the chat.
+// ! scanning a NULL into a plain time.Time blows up at runtime with
+// ! "converting NULL to time.Time is unsupported", so every nullable column below is a pointer
 type DirectMessage struct {
 	ID           int64      `json:"id"`
 	SenderID     int64      `json:"sender_id"`
