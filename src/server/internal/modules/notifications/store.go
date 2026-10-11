@@ -99,6 +99,29 @@ const live = `
 	     OR n.read_at IS NOT NULL
 	     OR EXISTS (SELECT 1 FROM follows f WHERE f.id = n.entity_id AND f.status = 'pending'))`
 
+// newest keeps only the most recent unread follow_request from any one actor.
+// ! the reader's rule, stated once: a person either has a request waiting on you or they do
+// ! not. "waiting" is not a quantity, so two rows from the same actor are never two things to
+// ! answer — they are the same thing drawn twice, and the panel ends up a wall of identical
+// ! names with only the last one acceptable
+// ! the write path already collapses a repeat onto the row it is holding, so in a database
+// ! written entirely by this build nothing here matches. it is the backstop for the two cases
+// ! that are outside that path: rows written before the collapse existed, and the documented
+// ! insert race where two bus goroutines both miss and both write
+// ? MAX(id) and not the latest created_at, because the id is the order the requests actually
+// ? arrived in. a collapsed row keeps its id and moves its timestamp, so created_at is the
+// ? better thing to SHOW and the worse thing to rank by
+// ? applied to the count as well as the list, and that pairing is not optional — a badge
+// ? counting rows the list refuses to draw is a number nobody can clear
+const newest = `
+	AND (n.type <> 'follow_request'
+	     OR n.read_at IS NOT NULL
+	     OR n.id = (SELECT MAX(x.id) FROM notifications x
+	                 WHERE x.user_id = n.user_id
+	                   AND x.type = 'follow_request'
+	                   AND x.actor_id = n.actor_id
+	                   AND x.read_at IS NULL))`
+
 // the one select both reads use, so a pushed frame and a row fetched from the inbox are
 // identical by construction and the frontend needs one renderer, not two
 const selectNotification = `
@@ -127,7 +150,7 @@ func (s *Store) byID(ctx context.Context, id int64) (Notification, error) {
 func (s *Store) list(ctx context.Context, userID int64, limit, offset int) ([]Notification, error) {
 	rows, err := s.db.QueryContext(ctx,
 		selectNotification+`
-		 WHERE n.user_id = ?`+live+`
+		 WHERE n.user_id = ?`+live+newest+`
 		 ORDER BY n.id DESC
 		 LIMIT ? OFFSET ?`, userID, limit, offset)
 	if err != nil {
@@ -153,7 +176,7 @@ func (s *Store) unreadCount(ctx context.Context, userID int64) (int, error) {
 	//! the same `live` predicate the list uses, and for the hardest reason to debug: a badge
 	//! counting rows the list refuses to draw is a number nobody can clear
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL`+live, userID).Scan(&n)
+		`SELECT COUNT(*) FROM notifications n WHERE n.user_id = ? AND n.read_at IS NULL`+live+newest, userID).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("unread count: %w", err)
 	}

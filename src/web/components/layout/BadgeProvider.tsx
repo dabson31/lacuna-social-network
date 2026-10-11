@@ -11,6 +11,7 @@ import * as api from '@/lib/api/client'
 import { useSession } from '@/lib/session/SessionProvider'
 import { useFrame } from '@/lib/realtime/SocketProvider'
 import { useToast } from '@/components/ui/Toast'
+import { collapseNotifications } from '@/features/notifications/actions'
 
 /**
  * the counters the shell shows on every route, in one place.
@@ -278,8 +279,20 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     //! at direct messages, so a room with unread messages lit no badge anywhere
     const unreadGroups = (inbox?.groups ?? []).reduce((n, c) => n + c.unread, 0)
     const groupPending = feed?.group_unread ?? []
+
+    //! the list and the badge are collapsed together or not at all. a count that includes a
+    //! row the panel refuses to draw is a number the reader cannot clear by any action
+    //! available to them, which is the worst kind of badge
+    //? the subtraction is exact rather than a recount. the server's unread_count spans the
+    //? whole inbox while this list is one page of it, so recounting from the page would
+    //? undercount anybody past the fiftieth notification. collapse only ever drops unread
+    //? rows, and each one it drops was counted exactly once on the way in
+    const allRows = feed?.notifications ?? []
+    const rows = collapseNotifications(allRows)
+    const collapsed = allRows.length - rows.length
+
     return {
-      pending: feed?.unread_count ?? 0,
+      pending: Math.max(0, (feed?.unread_count ?? 0) - collapsed),
       unread,
       unreadGroups,
       groups: groups.filter((g) => g.my_status === 'member').length,
@@ -287,7 +300,11 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
       unreadPosts: groups.reduce((n, g) => n + (g.unread_posts ?? 0), 0),
       groupPending,
       groupPendingTotal: groupPending.reduce((n, g) => n + g.unread, 0),
-      notifications: feed?.notifications ?? [],
+      //! collapsed before anything renders it, so the panel and the notices page cannot
+      //! disagree and neither can draw the same waiting request twice. the server applies the
+      //! identical rule in sql — this is the half that covers rows already in this tab's
+      //! memory, which no query can reach
+      notifications: rows,
       inbox,
       myGroups: groups,
       reloadNotifications,

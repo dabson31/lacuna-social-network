@@ -141,3 +141,35 @@ export function targetHref(n: NotificationRow): string | null {
       return '/events'
   }
 }
+
+/**
+ * one row per thing actually waiting on the reader, newest kept.
+ *
+ * ! the same rule notifications/store.go applies in sql, mirrored here for the one case sql
+ * ! cannot reach: rows already sitting in this tab's memory. the feed is held in react state
+ * ! and grows by socket frame, so a retraction that never arrives — a frame dropped while the
+ * ! socket was reconnecting, a tab that was asleep — leaves a row on screen that the server
+ * ! no longer has. refetching fixes it; nothing makes the tab refetch
+ *
+ * ! a follow_request collapses on the ACTOR alone, because a person either has a request
+ * ! waiting on you or does not. the other three collapse on the actor AND the entity, because
+ * ! there the entity is the subject: two invitations from one person are two different groups,
+ * ! and two events are two different events. collapsing those on the actor would silently
+ * ! drop the second one, which is the bug this rule has to avoid being
+ *
+ * ? read rows are never collapsed. they are history, and two resolved requests from the same
+ * ? person really are two things that happened
+ */
+export function collapseNotifications(list: NotificationRow[]): NotificationRow[] {
+  const seen = new Set<string>()
+  return list.filter((n) => {
+    if (n.read_at !== null) return true
+    const key =
+      n.type === NotificationType.FollowRequest
+        ? `${n.type}:${n.actor_id}`
+        : `${n.type}:${n.actor_id}:${n.entity_id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
