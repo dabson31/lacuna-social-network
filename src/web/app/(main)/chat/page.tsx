@@ -19,6 +19,7 @@ export default function InboxPage() {
   if (!inbox) return <Loading label="reading conversations…" />
 
   const unread = inbox.direct.reduce((n, c) => n + c.unread, 0)
+  const unreadGroups = inbox.groups.reduce((n, c) => n + c.unread, 0)
 
   return (
     <>
@@ -63,7 +64,10 @@ export default function InboxPage() {
       <div className="main__bar">
         <span className="lbl">group rooms</span>
         <div className="spacer" />
-        <span className="lbl">{inbox.groups.length}</span>
+        {/*? the same readout the dm bar above carries, so each half reports its own unread */}
+        <span className="lbl">
+          {inbox.groups.length} · {unreadGroups || 'no'} unread
+        </span>
       </div>
 
       <div className="rows">

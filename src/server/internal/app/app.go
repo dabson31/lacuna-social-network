@@ -80,7 +80,10 @@ func New(d Dependencies) (http.Handler, error) {
 	//! job only it can do, introducing modules that arent allowed to import each other
 	usersSvc := mountUsers(mux, d, s)
 	followsSvc := mountFollows(mux, d, s)
-	mountPosts(mux, d, s)
+	//! posts has to be mounted after follows, not because of routing but because the author
+	//! post list is gated by follows' "can A see B?" rule. a private account's profile is
+	//! only private if its post list honours the same rule its header does
+	mountPosts(mux, d, s, followsSvc)
 	groupsSvc := mountGroups(mux, d, s)
 
 	chatSvc := mountChat(mux, d, s, followsSvc, usersSvc, groupsSvc)

@@ -6,6 +6,7 @@ import { Empty, Loading } from '@/components/ui/Empty'
 import { ErrorView } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
 import { useBadges } from '@/components/layout/BadgeProvider'
+import { fieldErrors } from '@/lib/api/errors'
 import { toRFC3339 } from '@/lib/utils/time'
 import { EventCard } from '@/features/groups/components/EventCard'
 import { useEventFanIn } from '@/features/groups/hooks/useEventFanIn'
@@ -42,8 +43,22 @@ export default function EventsPage() {
       setComposing(false)
       reload()
       toast('event raised · every member was notified')
-    } catch {
-      toast('that event did not save')
+    } catch (err: unknown) {
+      /*
+        ! the generic "that event did not save" is what this replaces. the service answers 400
+        ! with one entry per field it rejected, and throwing that away left the only possible
+        ! reading of a failed submit "something, somewhere, is wrong". title, description and
+        ! event_time are all required server side, so a missing one has to be nameable
+        ? the `required` attributes below are the first line of defence and the browser's own
+        ? popup handles them. this is the second: a field the browser cannot check, and
+        ? anything the service rejects for a reason the form does not know about
+      */
+      const fields = fieldErrors(err)
+      //? the service's own messages already name their field — "description is required",
+      //? "event time must be an RFC 3339 timestamp" — so they are printed as written rather
+      //? than prefixed with the key, which would read "description: description is required"
+      const named = Object.values(fields ?? {}).join(' · ')
+      toast(named ? `that event is incomplete · ${named}` : 'that event did not save')
     }
   }
 
@@ -75,9 +90,15 @@ export default function EventsPage() {
             <span className="lbl">title</span>
             <input name="title" required maxLength={120} />
           </label>
+          {/*
+            ! required, because groups.Service.CreateEvent rejects an empty description. without
+            ! it the form posted, the service answered 400 and the submit looked like it simply
+            ! did nothing. the audit asks for "a title, a description, a day/time", so all three
+            ! are required on both sides
+          */}
           <label className="field">
             <span className="lbl">description</span>
-            <textarea name="description" rows={3} />
+            <textarea name="description" rows={3} required />
           </label>
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="lbl">day and time</span>

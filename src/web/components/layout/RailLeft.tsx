@@ -58,7 +58,9 @@ export function RailLeft() {
         case 'notices':
           return badges.pending || ''
         case 'messages':
-          return badges.unread || ''
+          //! both kinds. a group room is a conversation on this tile's own list, so a tile
+          //! labelled "unread" that only counted dms sat blank while rooms had unread messages
+          return badges.unread + badges.unreadGroups || ''
         case 'groups':
           return badges.groups || ''
         default:

@@ -17,6 +17,9 @@ var errForbiddenViewer = errors.New("a chosen viewer is not an accepted follower
 type Service struct {
 	store   *Store
 	uploads *storage.Store
+	// this is wired at startup like the buses are, and nil only in a test that never calls
+	// basically fixes the profile visibility issue in the network side
+	Profiles ProfileVisibility
 }
 
 func NewService(store *Store, uploads *storage.Store) *Service {
@@ -72,7 +75,32 @@ func (s *Service) Feed(ctx context.Context, viewerID, before int64, limit int) (
 	return s.store.feed(ctx, viewerID, before, clampLimit(limit))
 }
 
+// AuthorPosts is the profile's post list, and it answers to two separate rules.
+//
+// the `visible` predicate in the store decides, per post, whether this viewer may read it.
+// that is not enough on its own: a private account's `public` posts pass it, so a stranger
+// browsing a private profile used to be handed the owner's posts underneath the very notice
+// saying the record was private. the audit asks the opposite question — "are you prevented
+// from seeing a non-followed private profile" — so the profile rule applies first
+//
+//! an empty page and not an error. the profile itself must still render, because the follow
+//! button is how a reader gets out of this state, and the page already has the right copy
+//! for it: "nothing here you are allowed to read"
+//? the feed is deliberately untouched. a public post is public, which is what the subject
+//? says post privacy means, and the feed is the place that rule belongs to
 func (s *Service) AuthorPosts(ctx context.Context, viewerID, authorID, before int64, limit int) ([]Post, error) {
+	if viewerID != authorID {
+		if s.Profiles == nil {
+			return []Post{}, nil
+		}
+		ok, err := s.Profiles.CanViewProfile(ctx, viewerID, authorID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return []Post{}, nil
+		}
+	}
 	return s.store.authorPosts(ctx, viewerID, authorID, before, clampLimit(limit))
 }
 

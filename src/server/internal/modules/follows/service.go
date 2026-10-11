@@ -2,6 +2,8 @@ package follows
 
 import (
 	"context"
+	"errors"
+
 	"social/src/server/internal/platform/events"
 )
 
@@ -107,6 +109,28 @@ func (s *Service) Following(ctx context.Context, viewerID, ownerID int64) ([]Use
 		return nil, err
 	}
 	return s.store.listFollowing(ctx, ownerID)
+}
+
+// CanViewProfile is canView with a bool instead of a sentinel, for the other features that
+// need the answer rather than the refusal.
+//! this is the rule's one public entry point and it must stay that way. "can A see B?" gates
+//! the profile, the social graph AND the author's post list, and three copies of a three part
+//! rule is three chances for one of them to drift into leaking a private account
+func (s *Service) CanViewProfile(ctx context.Context, viewerID, ownerID int64) (bool, error) {
+	err := s.canView(ctx, viewerID, ownerID)
+	//? both refusals collapse to a plain no, and only here. Followers/Following still need
+	//? errUserMissing separately, because a 404 on a list route has a body to fill. a caller
+	//? asking "may i look" gets a yes or a no — an account that does not exist is a no, and
+	//? the api already treats "gone" and "not yours" as indistinguishable on purpose
+	if errors.Is(err, errNoRequest) || errors.Is(err, errUserMissing) {
+		return false, nil
+	}
+	//! anything else is a real failure — a dead connection, a locked table — and has to
+	//! travel. swallowing it here would turn a database outage into "this profile is private"
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // canView returns nil when the viewer may see owner's social graph, it reuses the same

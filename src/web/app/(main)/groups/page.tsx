@@ -16,7 +16,7 @@ import { acceptInvite, createGroup, declineInvite, requestJoin } from '@/feature
  * ! than one plus N. the button comes from those two fields and never from a membership probe
  */
 export default function GroupsPage() {
-  const { myGroups, reloadGroups } = useBadges()
+  const { myGroups, reloadGroups, inbox } = useBadges()
   const toast = useToast()
   const [open, setOpen] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
@@ -54,6 +54,18 @@ export default function GroupsPage() {
     }
   }
 
+  /**
+   * how many messages are waiting in this group's room.
+   * ! GET /api/conversations has always carried this per room, counted off
+   * ! group_members.last_read_message_id. nothing on this page read it, so a group with
+   * ! unread messages looked identical to a quiet one and the only place the number appeared
+   * ! was /chat
+   * ? undefined for a group the caller is not a member of: there is no room to be behind in,
+   * ? which is also why inbox.groups only lists the ones they are in
+   */
+  const unreadIn = (groupId: number): number =>
+    inbox?.groups.find((g) => g.group_id === groupId)?.unread ?? 0
+
   /** the four membership states, each with the one action that applies */
   const actionsFor = (g: Group) => {
     switch (g.my_status) {
@@ -70,7 +82,7 @@ export default function GroupsPage() {
               ! the other row actions, so it still looks like the mockup
             */}
             <Link className="btn btn--sm" href={`/groups/${g.id}/chat`}>
-              group chat
+              group chat{unreadIn(g.id) > 0 ? ` · ${unreadIn(g.id)} new` : ''}
             </Link>
           </>
         )
@@ -154,6 +166,7 @@ export default function GroupsPage() {
       <div className="rows">
         {myGroups.map((g) => {
           const isOpen = open === g.id
+          const unread = unreadIn(g.id)
           return (
             <div className="row-item" key={g.id}>
               <button
@@ -162,11 +175,16 @@ export default function GroupsPage() {
                 aria-controls={`grp-${g.id}`}
                 onClick={() => setOpen(isOpen ? null : g.id)}
               >
+                {/*? the dot the rest of the app uses for the same thing, lit per group */}
+                <span className={unread ? 'dot dot--on' : 'dot dot--idle'} />
                 <Avatar name={g.title} size="sm" />
                 <span className="tx">
                   <span className="nm">
                     {g.title}
                     {roleTag(g)}
+                    {/*? .row-unread is the stylesheet's own class for exactly this, already
+                        used by the dm and group rows on /chat */}
+                    {unread > 0 && <span className="row-unread">{unread} new</span>}
                   </span>
                   <span className="mt">
                     {g.member_count} {g.member_count === 1 ? 'member' : 'members'}

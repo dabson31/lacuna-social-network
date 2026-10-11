@@ -1,13 +1,16 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { WsFrame } from '@shared/constants/ws'
+import { NOTIFICATION_LABEL } from '@shared/constants/domain'
 import type { Feed, NotificationRow } from '@shared/contracts/notifications'
 import type { Inbox } from '@shared/contracts/chat'
 import type { Group } from '@shared/contracts/groups'
 import * as api from '@/lib/api/client'
 import { useSession } from '@/lib/session/SessionProvider'
 import { useFrame } from '@/lib/realtime/SocketProvider'
+import { useToast } from '@/components/ui/Toast'
 
 /**
  * the counters the shell shows on every route, in one place.
@@ -24,6 +27,14 @@ interface Badges {
   pending: number
   /** unread direct messages, summed across conversations. a different counter entirely */
   unread: number
+  /**
+   * unread group room messages, summed across rooms.
+   * ! a third number rather than folded into `unread`, because the two are answered by two
+   * ! different mechanisms: a dm counts rows with read_at IS NULL, a room counts rows past
+   * ! group_members.last_read_message_id. anything that wants "unread messages" adds them,
+   * ! and anything that wants one kind still has it
+   */
+  unreadGroups: number
   /** groups the caller is a member of, for the tile */
   groups: number
 
@@ -43,6 +54,13 @@ const BadgeContext = createContext<Badges | null>(null)
 export function BadgeProvider({ children }: { children: React.ReactNode }) {
   const { state } = useSession()
   const authed = state.status === 'authenticated'
+  const toast = useToast()
+  //? not useUser(): this provider mounts above the gate in Shell, so it has to cope with the
+  //? loading and anonymous states rather than throw over them
+  const me = state.status === 'authenticated' ? state.user : null
+  //? a message you are already reading does not need announcing, and in an active thread a
+  //? toast per frame is noise rather than a notification
+  const pathname = usePathname()
 
   const [feed, setFeed] = useState<Feed | null>(null)
   const [inbox, setInbox] = useState<Inbox | null>(null)
@@ -95,18 +113,51 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
             unread_count: prev.unread_count + 1,
           },
     )
+    //! the pop-up half of "a user must be able to see the notifications in every page". the
+    //! count and the Pending panel both needed you to be looking at them; this announces
+    //! itself. all four required kinds come down this one frame, so one line covers follow
+    //! requests, group invites, join requests and new events
+    toast(`${NOTIFICATION_LABEL[row.type]} · ${row.actor_name}`)
   })
 
   //? a dm arriving anywhere bumps the inbox, which is cheaper and more correct than trying to
   //? patch an unread count per conversation from the frame alone
-  useFrame(WsFrame.DmMessage, () => reloadInbox(), [reloadInbox])
-  useFrame(WsFrame.GroupMessage, () => reloadInbox(), [reloadInbox])
+  useFrame(
+    WsFrame.DmMessage,
+    (m) => {
+      reloadInbox()
+      //? the sender receives their own message back by design — the rest commits the row and
+      //? the socket pushes it — so announcing it would toast at you every time you typed
+      if (m.sender_id === me?.id) return
+      if (pathname === `/chat/${m.sender_id}`) return
+      toast(`message · ${m.sender_name}`)
+    },
+    [reloadInbox],
+  )
+
+  useFrame(
+    WsFrame.GroupMessage,
+    (m) => {
+      reloadInbox()
+      if (m.sender_id === me?.id) return
+      if (pathname === `/groups/${m.group_id}/chat`) return
+      //? the frame carries the group id and not its title, and the titles are already here
+      const room = groups.find((g) => g.id === m.group_id)
+      toast(room ? `${room.title} · ${m.sender_name}` : `group message · ${m.sender_name}`)
+    },
+    [reloadInbox],
+  )
 
   const value = useMemo<Badges>(() => {
     const unread = (inbox?.direct ?? []).reduce((n, c) => n + c.unread, 0)
+    //! the group half of the same question, which nothing outside /chat was reading. the api
+    //! has always returned it per room in inbox.groups[].unread — the counter simply stopped
+    //! at direct messages, so a room with unread messages lit no badge anywhere
+    const unreadGroups = (inbox?.groups ?? []).reduce((n, c) => n + c.unread, 0)
     return {
       pending: feed?.unread_count ?? 0,
       unread,
+      unreadGroups,
       groups: groups.filter((g) => g.my_status === 'member').length,
       notifications: feed?.notifications ?? [],
       inbox,

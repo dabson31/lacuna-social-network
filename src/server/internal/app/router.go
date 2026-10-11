@@ -84,14 +84,17 @@ func mountFollows(mux *http.ServeMux, d Dependencies, s shared) *follows.Service
 	return svc
 }
 
-// posts owns the feed, the three privacy levels and comments. it needs no bus and no ports,
-// it does its own visibility sql inside its store, so this mount is just routes
+// posts owns the feed, the three privacy levels and comments. it does its own per-post
+// visibility sql inside its store, and takes one port for the rule it does not own
 //! GET /api/users/{id}/posts lives here and not in mountUsers even though the path hangs off
-//! a user, because the thing being returned is posts and the visibility rule deciding what
-//! comes back is the posts module's rule
-func mountPosts(mux *http.ServeMux, d Dependencies, s shared) {
+//! a user, because the thing being returned is posts and the per-post visibility rule
+//! deciding what comes back is the posts module's rule
+//! the one thing it is NOT allowed to decide for itself is whether that author's record may
+//! be browsed at all. follows owns "can A see B?", so it arrives as posts.ProfileVisibility
+func mountPosts(mux *http.ServeMux, d Dependencies, s shared, followsSvc posts.ProfileVisibility) {
 	store := posts.NewStore(d.DB)
 	svc := posts.NewService(store, s.uploads)
+	svc.Profiles = followsSvc
 	h := posts.NewHandler(svc, d.Log)
 
 	mux.Handle("POST /api/posts", s.requireAuth(h.Create))

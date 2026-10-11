@@ -7,6 +7,7 @@ import * as api from '@/lib/api/client'
 import { useSession } from '@/lib/session/SessionProvider'
 import { useSocket } from '@/lib/realtime/SocketProvider'
 import { useToast } from '@/components/ui/Toast'
+import { useBadges } from '@/components/layout/BadgeProvider'
 import { handle } from '@/lib/utils/identity'
 
 /**
@@ -21,6 +22,7 @@ import { handle } from '@/lib/utils/identity'
 export function Chrome() {
   const { state, signOut } = useSession()
   const { status, rtt } = useSocket()
+  const { pending, unread, unreadGroups } = useBadges()
   const router = useRouter()
   const toast = useToast()
   const [clock, setClock] = useState('--:--:--')
@@ -81,6 +83,24 @@ export function Chrome() {
       <div className="sep" />
       {user ? (
         <>
+          {/*
+            ! the two counts, top right, on every route — the chrome is in (main)/layout.tsx
+            ! for the same reason logout is. the Notices tile in the left rail and the Pending
+            ! panel in the right one both already carried `pending`, but the rail folds away
+            ! under 1180px and the panel is below the fold on a phone, so neither is actually
+            ! "on every page" the way the subject means it
+            ? only existing classes. `.chrome .link` and `.chrome b` are the design's own, and
+            ? the accent on a non-zero count is the same inline style the socket readout above
+            ? already uses rather than a new rule in a stylesheet that is meant to be read only
+          */}
+          <Link className="link" href="/notifications" title="Follow requests, invitations and events">
+            notices <b style={{ color: pending ? 'var(--acid)' : undefined }}>{pending}</b>
+          </Link>
+          <Link className="link" href="/chat" title="Unread messages">
+            inbox{' '}
+            <b style={{ color: unread + unreadGroups ? 'var(--acid)' : undefined }}>{unread + unreadGroups}</b>
+          </Link>
+          <div className="sep" />
           <Link className="link" href={`/profile/${user.id}`} title="Open your profile">
             {handle(user)}
           </Link>
