@@ -29,7 +29,7 @@ func main() {
 
 func run(args []string) error {
 
-	if len(args) == 0 { 
+	if len(args) == 0 {
 		return fmt.Errorf(usage)
 	}
 
@@ -44,18 +44,24 @@ func run(args []string) error {
 		return err
 	}
 
-	m, err := sqlite.NewMigrator(db, cfg.DBPath)
+	//todo; originally, this had cfg.DBPath
+	m, err := sqlite.NewMigrator(db, cfg.MigrationsPath)
 	if err != nil {
 		db.Close()
 		return err
 	}
+	//! deferred, not called here. closing the migrator on the line after building it shut the
+	//! database before the switch below ever ran, so every single command answered
+	//! "transaction start failed ... sql: database is closed" — the whole cli was dead. the
+	//! error check also has to come first, because Close on a nil migrator is a panic
+	defer m.Close()
 
 	switch args[0] {
 	case "up":
 		err = m.Up()
 	case "down":
 		err = m.Down()
-	case "steps":
+	case "step":
 		n, stepsErr := intArg(args)
 		if stepsErr != nil {
 			return stepsErr

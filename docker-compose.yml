@@ -1,0 +1,47 @@
+# two images, two containers, one network.
+# both build from the REPO ROOT as their context, which is not the usual shape because the backend
+# needs it because go.mod lives at the root; the frontend needs it because tsconfig's @shared/* alias points at src/shared
+name: social-network
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/server/Dockerfile
+    # named so `docker ps -a` and `docker images` read as themselves rather than as
+    # social-network-backend-1 and a dangling <none>
+    image: social-network-backend
+    container_name: social-network-backend
+    ports:
+      - '8080:8080' # host:container
+    environment:
+      APP_ENV: development
+      PORT: '8080'
+      DB_PATH: /app/data/social.db
+      MIGRATIONS_PATH: /app/migrations
+      UPLOAD_DIR: /app/data/uploads
+      SESSION_TTL: 168h
+      # CORS middleware, which reports a readable console error, and the
+      ALLOWED_ORIGIN: http://localhost:3000
+    volumes:
+      - backend-data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: src/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080
+    image: social-network-frontend
+    container_name: social-network-frontend
+    ports:
+      - '3000:3000'
+    depends_on:
+      backend:
+        #? the backend runs migrations before it listens
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
