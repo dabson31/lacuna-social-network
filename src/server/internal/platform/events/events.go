@@ -49,7 +49,6 @@ type Handler func(ctx context.Context, e Event)
 // neither knows about the other
 //! this limits coupling, meaning the interdependence between different software modules
 //! while this is better in practice, making sure the connection between the two is consistent is somewhat challenging sometimes 
-//* 
 type Bus struct {
 	mu   sync.RWMutex
 	subs map[string][]Handler

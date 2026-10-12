@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { LIMITS, runeLength } from '@/lib/utils/count'
 
 /**
@@ -9,8 +10,9 @@ import { LIMITS, runeLength } from '@/lib/utils/count'
  * ! comment on it says so: "it does NOT sanitise ... stripping characters here is how emojis
  * ! and apostrophes get mangled and it protects nothing the output layer doesnt already
  * ! handle". react escapes on render, so the whole path is already correct
- * ? and no picker: the design's chat input is a plain text input, so the os keyboard and paste
- * ? are how emoji get typed
+ * ? the tray is the one addition to the design's own .chat__in row. the os keyboard and paste
+ * ? already worked; the audit asks an auditor to CONFIRM emoji at a keyboard they did not pick,
+ * ? and this is the field that question is about
  */
 export function ChatComposer({
   placeholder,
@@ -25,6 +27,7 @@ export function ChatComposer({
 }) {
   const [content, setContent] = useState('')
   const [busy, setBusy] = useState(false)
+  const field = useRef<HTMLInputElement>(null)
 
   //! counted in runes, because the server counts with utf8.RuneCountInString so an emoji costs
   //! one character and not four. with .length a message of 500 emoji would be refused by a
@@ -48,6 +51,7 @@ export function ChatComposer({
   return (
     <form className="chat__in" onSubmit={submit}>
       <input
+        ref={field}
         autoComplete="off"
         placeholder={placeholder}
         aria-label="Message"
@@ -58,6 +62,9 @@ export function ChatComposer({
           onTyping?.()
         }}
       />
+      {/*? onInsert and not a write to the node: the field is controlled, so react would paint
+          over anything set on it directly at the next render */}
+      <EmojiPicker target={field} onInsert={setContent} label="" />
       {tooLong && (
         <span className="lbl" style={{ color: 'var(--red)' }}>
           {length} / {LIMITS.message}

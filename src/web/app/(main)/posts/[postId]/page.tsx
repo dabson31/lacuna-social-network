@@ -7,6 +7,7 @@ import { ErrorView } from '@/components/ui/ErrorView'
 import { useFetch } from '@/lib/api/useFetch'
 import { useUser } from '@/lib/session/SessionProvider'
 import { displayName } from '@/lib/utils/identity'
+import { eventWhen } from '@/lib/utils/time'
 import { PostCard } from '@/features/posts/components/PostCard'
 import { createComment, deletePost, getPost, listComments } from '@/features/posts/api'
 
@@ -44,6 +45,13 @@ export default function PostPage() {
           ← feed
         </Link>
         <span className="lbl">post {post.id}</span>
+        {/*
+          ? the card's own line says "8 min", which is the right answer in a feed you are
+          ? scrolling and the wrong one on the page you opened to read the thing properly.
+          ? eventWhen is the design's existing "19 oct, 23:30" — borrowed from the event card
+          ? rather than inventing a fourth time format for one line
+        */}
+        <span className="lbl">{eventWhen(post.created_at)}</span>
         <div className="spacer" />
         <Link className="btn btn--sm" href={`/profile/${post.author_id}`}>
           {post.author_name}

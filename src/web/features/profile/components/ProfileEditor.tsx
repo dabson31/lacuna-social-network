@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Profile, UpdateProfileInput } from '@shared/contracts/users'
 import { FieldError, FormError } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { fieldErrors } from '@/lib/api/errors'
 import { LIMITS, runeLength } from '@/lib/utils/count'
 import { updateMe } from '../api'
@@ -20,6 +21,8 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
   const [about, setAbout] = useState(profile.about_me ?? '')
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
+  const nickRef = useRef<HTMLInputElement>(null)
+  const aboutRef = useRef<HTMLTextAreaElement>(null)
   const toast = useToast()
   const fields = fieldErrors(error)
 
@@ -64,8 +67,12 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
 
       <label className="field">
         <span className="lbl">nickname</span>
-        <input value={nickname} maxLength={LIMITS.nickname} onChange={(e) => setNickname(e.target.value)} />
+        <input ref={nickRef} value={nickname} maxLength={LIMITS.nickname} onChange={(e) => setNickname(e.target.value)} />
         <FieldError fields={fields} name="nickname" />
+        {/*! the two fields a person writes in their own voice get the tray. first and last name
+            do not: the api renders them as `first_name || ' ' || last_name` in every member
+            list, notification and chat header, and that is identity rather than expression */}
+        <EmojiPicker target={nickRef} onInsert={setNickname} placement="down" />
       </label>
 
       <label className="field">
@@ -75,8 +82,9 @@ export function ProfileEditor({ profile, onSaved }: { profile: Profile; onSaved:
             {runeLength(about)} / {LIMITS.aboutMe}
           </span>
         </span>
-        <textarea rows={3} value={about} onChange={(e) => setAbout(e.target.value)} />
+        <textarea ref={aboutRef} rows={3} value={about} onChange={(e) => setAbout(e.target.value)} />
         <FieldError fields={fields} name="about_me" />
+        <EmojiPicker target={aboutRef} onInsert={setAbout} />
       </label>
 
       <button className="btn btn--sm btn--primary" type="submit" disabled={busy || !dirty}>

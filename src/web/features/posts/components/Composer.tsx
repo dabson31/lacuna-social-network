@@ -13,6 +13,7 @@ import { displayName } from '@/lib/utils/identity'
 import { submitOnEnter } from '@/lib/utils/keys'
 import { listFollowers } from '@/features/follows/api'
 import { ImagePicker } from '@/features/auth/components/ImagePicker'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { createPost } from '../api'
 
 /**
@@ -38,6 +39,7 @@ export function Composer({
   const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const toast = useToast()
   const fields = fieldErrors(error)
 
@@ -97,6 +99,7 @@ export function Composer({
           <Avatar name={selfName} path={selfAvatar} size="lg" />
           <div className="field">
             <textarea
+              ref={bodyRef}
               name="content"
               rows={2}
               placeholder="Transmit to the layer…"
@@ -110,6 +113,8 @@ export function Composer({
 
             <div className="attached" data-open="1" style={{ marginTop: 8 }}>
               <ImagePicker name="image" label="attach image" />
+              {/*? beside the image picker, because both answer "add something to this post" */}
+              <EmojiPicker target={bodyRef} onInsert={setContent} />
             </div>
             <FieldError fields={fields} name="image" />
 

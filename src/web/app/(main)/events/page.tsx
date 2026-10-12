@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { Empty, Loading } from '@/components/ui/Empty'
 import { ErrorView } from '@/components/ui/ErrorView'
 import { useToast } from '@/components/ui/Toast'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { useBadges } from '@/components/layout/BadgeProvider'
 import { fieldErrors } from '@/lib/api/errors'
 import { localDayStart, toRFC3339 } from '@/lib/utils/time'
@@ -21,6 +22,8 @@ export default function EventsPage() {
   const { myGroups } = useBadges()
   const { events, loading, error, reload, respond } = useEventFanIn()
   const toast = useToast()
+  const eTitle = useRef<HTMLInputElement>(null)
+  const eDesc = useRef<HTMLTextAreaElement>(null)
   const [composing, setComposing] = useState(false)
 
   const mine = myGroups.filter((g) => g.my_status === 'member')
@@ -90,7 +93,10 @@ export default function EventsPage() {
           </label>
           <label className="field">
             <span className="lbl">title</span>
-            <input name="title" required maxLength={120} />
+            <input ref={eTitle} name="title" required maxLength={120} />
+            {/*? uncontrolled, like the group form: no onInsert, so the picker writes to the node
+                and dispatches input. down, because the form sits high on the page */}
+            <EmojiPicker target={eTitle} placement="down" />
           </label>
           {/*
             ! required, because groups.Service.CreateEvent rejects an empty description. without
@@ -100,7 +106,8 @@ export default function EventsPage() {
           */}
           <label className="field">
             <span className="lbl">description</span>
-            <textarea name="description" rows={3} required />
+            <textarea ref={eDesc} name="description" rows={3} required />
+            <EmojiPicker target={eDesc} placement="down" />
           </label>
           {/*
             ! min is midnight today, so the picker will not offer a past day and the browser

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Comment } from '@shared/contracts/posts'
 import { Avatar } from '@/components/ui/Avatar'
 import { ErrorView } from '@/components/ui/ErrorView'
@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { LIMITS, runeLength } from '@/lib/utils/count'
 import { age } from '@/lib/utils/time'
 import { ImagePicker } from '@/features/auth/components/ImagePicker'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { Attachment } from './Attachment'
 
 const PAGE = 3
@@ -38,6 +39,7 @@ export function Thread({
   const [shown, setShown] = useState(PAGE)
   const [error, setError] = useState<unknown>(null)
   const [draft, setDraft] = useState('')
+  const replyRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
@@ -130,6 +132,7 @@ export function Thread({
       <form className="reply-box" onSubmit={send}>
         <Avatar name={selfName} path={selfAvatar} size="sm" />
         <input
+          ref={replyRef}
           type="text"
           name="content"
           placeholder={`reply to post ${postId}`}
@@ -138,6 +141,7 @@ export function Thread({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
         />
+        <EmojiPicker target={replyRef} onInsert={setDraft} label="" />
         <ImagePicker name="image" label="image" />
         <button className="btn btn--sm" type="submit" disabled={busy}>
           send

@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { MemberStatus, NotificationType } from '@shared/constants/domain'
 import type { Group } from '@shared/contracts/groups'
 import { Avatar } from '@/components/ui/Avatar'
 import { Empty } from '@/components/ui/Empty'
 import { useToast } from '@/components/ui/Toast'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { useBadges } from '@/components/layout/BadgeProvider'
 import { acceptInvite, createGroup, declineInvite, requestJoin } from '@/features/groups/api'
 import { pendingNotice } from '@/features/notifications/actions'
@@ -32,6 +33,11 @@ export default function GroupsPage() {
   const [open, setOpen] = useState<number | null>(null)
   const [composing, setComposing] = useState(false)
   const [busy, setBusy] = useState<number | null>(null)
+  //! this form is read with `new FormData(e.currentTarget)` and has no value/onChange, so the
+  //! node IS the state. the picker writes straight to it and fires an input event, which is the
+  //! branch it takes when no onInsert is given
+  const gTitle = useRef<HTMLInputElement>(null)
+  const gDesc = useRef<HTMLTextAreaElement>(null)
 
   const act = async (g: Group, fn: () => Promise<unknown>, message: string) => {
     setBusy(g.id)
@@ -214,11 +220,15 @@ export default function GroupsPage() {
         <form className="authform" onSubmit={make} style={{ padding: '18px 26px', maxWidth: 520 }}>
           <label className="field">
             <span className="lbl">title</span>
-            <input name="title" required maxLength={120} />
+            <input ref={gTitle} name="title" required maxLength={120} />
+            {/*? down, because this field sits near the top of the page and an upward tray would
+                open above the viewport */}
+            <EmojiPicker target={gTitle} placement="down" />
           </label>
           <label className="field" style={{ marginBottom: 14 }}>
             <span className="lbl">description</span>
-            <textarea name="description" rows={3} required />
+            <textarea ref={gDesc} name="description" rows={3} required />
+            <EmojiPicker target={gDesc} placement="down" />
           </label>
           <button className="btn btn--sm btn--primary" type="submit">
             create it

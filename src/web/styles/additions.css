@@ -336,3 +336,90 @@
   color: var(--ink-ghost);
   transition: color 0.12s;
 }
+
+/* ── the feed card opens its own post ───────────────────────────────────────────────────── */
+
+/*! lacuna.css already lights `.post:hover` with `var(--c0c0c0e)`, the same wash `.row-main`
+ *! uses for a row you can open. the card was drawn as a live surface from the start — the
+ *! mockup simply had no second page to send anyone to, so the one thing missing is the
+ *! pointer that says the wash means something.
+ *? no hover rule here. adding one would be a second opinion about a state the design already
+ *? has an opinion about, and they would drift. */
+.post[data-openable='1'] {
+  cursor: pointer;
+}
+
+/*! `cursor` inherits, so the rule above reaches every descendant and would put a pointer on
+ *! the reply box. the controls set their own (`.act`, `button`, `.btn` all declare pointer),
+ *! but a text field inherits whatever it is given and ends up claiming it is a link.
+ *? `auto` and not `text`, so each field keeps the cursor its own type implies */
+.post[data-openable='1'] input,
+.post[data-openable='1'] textarea,
+.post[data-openable='1'] select {
+  cursor: auto;
+}
+
+/*! the two panels that open inside the card are reading surfaces and the click handler skips
+ *! them, so the cursor has to agree — a pointer over text that does nothing when clicked is
+ *! the affordance lying */
+.post[data-openable='1'] .thread,
+.post[data-openable='1'] .post__meta {
+  cursor: auto;
+}
+
+/* ── the emoji tray ─────────────────────────────────────────────────────────────────────── */
+
+/*! the mockup has no picker, so none of this is ported — it is built out of the design's own
+ *! tokens and the .panel it hangs on, which is the same thing the invite popover on a group
+ *! page already does with .row-detail + .pad.panel */
+.emoji {
+  position: relative;
+  display: inline-flex;
+}
+
+.emoji__pop {
+  position: absolute;
+  left: 0;
+  z-index: 30;
+  padding: 8px;
+  /*! wide enough for eight columns and no wider. body carries `overflow-x: hidden`, so a tray
+   *! that reached past the right edge would be clipped with no way to scroll to it */
+  width: 252px;
+}
+
+/*! up by default: every composer in this app sits under the thing it is about, with the page
+ *! edge or a submit row below it. down is for a field near the top of a form, where up would
+ *! leave the viewport entirely */
+.emoji__pop[data-place='up'] {
+  bottom: calc(100% + 6px);
+}
+.emoji__pop[data-place='down'] {
+  top: calc(100% + 6px);
+}
+
+.emoji__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 1px;
+}
+
+.emoji__grid button {
+  font-size: 17px;
+  line-height: 1;
+  padding: 4px 0;
+  background: 0;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+/*! the same wash .row-main:hover and .post:hover use, so a hovered cell reads as the same kind
+ *! of live surface as everything else rather than inventing a highlight */
+.emoji__grid button:hover {
+  background: var(--c0c0c0e);
+}
+
+.emoji__hint {
+  margin: 7px 0 0;
+  color: var(--ink-ghost);
+}

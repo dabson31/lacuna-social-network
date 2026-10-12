@@ -16,6 +16,7 @@ import { age } from '@/lib/utils/time'
 import { Attachment } from '@/features/posts/components/Attachment'
 import { Thread } from '@/features/posts/components/Thread'
 import { ImagePicker } from '@/features/auth/components/ImagePicker'
+import { EmojiPicker } from '@/components/ui/EmojiPicker'
 import { createGroupComment, createGroupPost, listGroupComments, listGroupPosts, markGroupPostsRead } from '../api'
 
 /**
@@ -43,6 +44,7 @@ export function GroupPostFeed({
   //? enter submits through the form rather than through a click, so the handler needs a
   //? handle on it. same shape as the feed composer, which is the point
   const formRef = useRef<HTMLFormElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const toast = useToast()
 
   /**
@@ -127,6 +129,7 @@ export function GroupPostFeed({
             <Avatar name={selfName} path={selfAvatar} size="lg" />
             <div className="field">
               <textarea
+                ref={bodyRef}
                 name="content"
                 rows={2}
                 placeholder="Post to this group…"
@@ -138,6 +141,7 @@ export function GroupPostFeed({
               />
               <div className="attached" data-open="1" style={{ marginTop: 8 }}>
                 <ImagePicker name="image" label="attach image" />
+                <EmojiPicker target={bodyRef} onInsert={setContent} />
               </div>
               <div className="under">
                 <span className="lbl">visible to members only</span>

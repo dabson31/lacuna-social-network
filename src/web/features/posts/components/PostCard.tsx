@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { NavButton } from '@/components/ui/NavButton'
 import { Privacy } from '@shared/constants/domain'
 import type { Comment, Post } from '@shared/contracts/posts'
@@ -54,7 +55,38 @@ export function PostCard({
   const [mirrored, setMirrored] = useState(false)
   const [count, setCount] = useState(post.comment_count)
   const toast = useToast()
+  const router = useRouter()
   const isSelf = post.author_id === selfId
+
+  /**
+   * the card itself opens the post.
+   * ! lacuna.css has always lit `.post:hover` with the same wash `.row-main:hover` uses, so the
+   * ! design treated the card as a live surface — it just had no page to send you to, and the
+   * ! only thing a reader could actually open from the feed was the author's name
+   * ! the whole card cannot be a <Link>: it holds eight buttons and a reply form, and an <a>
+   * ! wrapping a <button> is invalid html that browsers re-parent, which breaks the card
+   * ? so it is a click on the article with the things that already do something excluded. the
+   * ? footer keeps its own `open` control, which is what makes this reachable from a keyboard:
+   * ? the article is deliberately NOT given tabIndex or role=button, because a focusable thing
+   * ? containing nine other focusable things is worse for a screen reader than no shortcut
+   */
+  const openFromCard = (e: React.MouseEvent<HTMLElement>) => {
+    if (standalone) return
+    const el = e.target as HTMLElement | null
+
+    //? anything that already does something keeps doing it, and nothing else
+    if (el?.closest('button, a, input, textarea, select, label, [role="button"]')) return
+
+    //! the two panels that open INSIDE the card are reading surfaces, not the card. you
+    //! expanded the replies to read them here, so a stray click in them must not yank the
+    //! page out from under you
+    if (el?.closest('.thread, .post__meta')) return
+
+    //? a drag that ended up selecting text is a read, not a click
+    if (window.getSelection()?.toString()) return
+
+    router.push(`/posts/${post.id}`)
+  }
 
   const withdraw = async () => {
     if (!onDelete) return
@@ -67,7 +99,15 @@ export function PostCard({
   }
 
   return (
-    <article className="post" data-priv={post.privacy} data-id={post.id}>
+    <article
+      className="post"
+      data-priv={post.privacy}
+      //? the hook additions.css hangs the pointer on. absent on the post's own page, where
+      //? there is nowhere left to go
+      data-openable={standalone ? undefined : '1'}
+      data-id={post.id}
+      onClick={openFromCard}
+    >
       <div className="post__hd">
         <Avatar name={post.author_name} path={post.author_avatar} />
         <div className="post__who">
