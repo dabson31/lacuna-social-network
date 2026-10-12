@@ -224,7 +224,7 @@ func (s *Service) CreateEvent(ctx context.Context, groupID, creatorID int64, in 
 		// a channel that sorts by event_time ascending, where it would also sit at the very top
 		// ! checked here and not only on the form. the input's min attribute is a convenience
 		// ! for the person typing, and anything that arrives over http has not been through it
-		fields.Add("event_time", "an event cannot be scheduled before today")
+		fields.Add("event_time", "an event cannot be scheduled to the past")
 	}
 	if fields.Any() {
 		return Event{}, fields
@@ -290,9 +290,12 @@ func (s *Service) Respond(ctx context.Context, eventID, userID int64, in Respond
 // ? is a few hours either side of the server's
 func startOfToday() time.Time {
 	now := time.Now().UTC()
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	hour := now.Hour()
+	min := now.Minute()
+	sec := now.Second()
+	nsec := now.Nanosecond()
+	return time.Date(now.Year(), now.Month(), now.Day(), hour, min, sec, nsec, time.UTC)
 }
-
 func validateGroup(in CreateGroupInput) httpx.ValidationErrors {
 	fields := httpx.ValidationErrors{}
 	if in.Title == "" {
