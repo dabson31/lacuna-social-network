@@ -2,13 +2,6 @@
 
 How this repo is laid out, how a request moves through it, and why each boundary is where it is.
 
-`Docs/Architectural Design.md` is the *contract* — it states the rules. This document is the
-*explanation* — it shows the rules operating in the code that exists, names the failure each rule
-prevents, and marks where the code has not caught up to the plan yet.
-
-Read with `plan/README.md` open: its §"The rules that keep this from rotting" is the five-line
-version of everything below.
-
 ---
 
 ## Table of contents
