@@ -23,6 +23,10 @@ type Post struct {
 	AuthorName   string    `json:"author_name"`
 	AuthorAvatar *string   `json:"author_avatar"`
 	CommentCount int       `json:"comment_count"`
+	// how many people a private post was shared with, the design prints it as "selected · N"
+	//? it is zero for a public or almost_private post because post_viewers is only written for
+	//? a private one, so the number is meaningless outside that case and the ui only reads it there
+	ViewerCount int `json:"viewer_count"`
 }
 
 type Comment struct {

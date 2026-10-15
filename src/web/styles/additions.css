@@ -1,0 +1,425 @@
+/* ===========================================================================
+   additions — the only stylesheet that is not the design
+
+   lacuna.css is the mockup's own CSS, copied byte for byte, and it is read
+   only. Two things the mockup never needed are missing from it, because it
+   had no server and never failed:
+
+     1. real uploaded images, since every avatar was initials and every
+        attachment was an empty dithered plate
+     2. a form outside the composer, since the mockup opens already logged in
+        and has no register or login screen
+
+   ! every value below is taken from an existing rule in lacuna.css or from a
+   ! token it already defines. nothing here invents a colour, a font or a
+   ! spacing step, and nothing overrides a rule the design wrote — these only
+   ! cover selectors lacuna.css has no opinion about.
+   ? kept as a separate file so the design stays byte for byte what the mockup
+   ? had, and so this whole addition is one deletable file.
+   =========================================================================== */
+
+/* --- 1. uploads ----------------------------------------------------------
+   the design sizes .av and .plate .img already; these only teach an <img>
+   to sit inside them. the squares, borders and heights stay the design's.   */
+
+.av > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* the dithered gradient stays underneath, so a slow or broken image degrades
+   back to exactly what the mockup drew rather than to a white box */
+.plate .img > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* --- 2. the auth card ----------------------------------------------------
+   the mockup opens already logged in, so it has no register or login screen
+   and lacuna.css has no rule for a form outside the composer: .field exists
+   only as `.compose .field`, and every input rule is scoped to .search,
+   .chat__in or .compose.
+
+   ! the design's idiom for a text input is a BORDERED CONTAINER holding a
+   ! BORDERLESS, TRANSPARENT input — see .search and .chat__in. the border,
+   ! background and padding below are .search's, exactly.
+   ? scoped under .authform / .authcard so none of it can reach the mockup's
+   ? own components, which already have their own input rules.               */
+
+.authcard {
+  width: 100%;
+  max-width: 392px;
+}
+
+/* the wordmark. .mark is scoped to `.chrome .mark`, so this repeats its
+   geometry — the 7px acid square and the 0.26em tracking — at the larger
+   size a masthead wants */
+.authcard__mark {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  color: var(--ink);
+  margin: 0;
+}
+
+.authcard__mark i {
+  width: 8px;
+  height: 8px;
+  background: var(--acid);
+  display: block;
+  flex: none;
+  transform: translateY(-2px);
+}
+
+/* the body of the card, under the .board__hd strip */
+.authcard__body {
+  padding: 22px 24px 24px;
+}
+
+/* a hairline, the same one .eof draws across the end of the feed */
+.authcard__rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+  margin: 20px 0 14px;
+}
+
+.authform .field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+/* the label sits above its input rather than inline, which is the only
+   departure from .search and it is forced: .lbl is an inline span and a
+   stacked form needs it on its own line */
+.authform .field > .lbl {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* first name / last name, and anything else that pairs */
+.authform .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* a run of fields under their own heading, for register's optional half */
+.authform .group-hd {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 20px 0 12px;
+}
+
+.authform .group-hd::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.authform .field input,
+.authform .field textarea,
+.authform .field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg-sunk);
+  padding: 9px 11px;
+  outline: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  transition: border-color 0.12s;
+}
+
+/* about_me is prose, so it takes the composer's sans face and line height */
+.authform .field textarea {
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  resize: vertical;
+  min-height: 62px;
+}
+
+.authform .field input::placeholder,
+.authform .field textarea::placeholder {
+  color: var(--ink-ghost);
+}
+
+/* the focus edge is the accent at low strength, which is how the design marks
+   the thing you are currently on everywhere else */
+.authform .field input:focus,
+.authform .field textarea:focus,
+.authform .field select:focus {
+  border-color: var(--acid-dim);
+}
+
+/*! chrome paints an autofilled input with its own near-white background and
+ *! near-black text, using an inset shadow that `background` cannot override.
+ *! on a #060607 form that is a white bar with invisible text — the single
+ *! ugliest thing that can happen to this palette, and it only appears for
+ *! people whose browser remembers them, so it is easy to never see while
+ *! developing. the huge inset shadow is the only way to repaint it. */
+.authform .field input:-webkit-autofill,
+.authform .field input:-webkit-autofill:hover,
+.authform .field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-sunk) inset;
+  box-shadow: 0 0 0 1000px var(--bg-sunk) inset;
+  caret-color: var(--ink);
+  font-family: var(--mono);
+}
+
+/* a date input draws its own calendar glyph dark on dark; this is the one
+   place a filter is unavoidable, and it only inverts the browser's own icon */
+.authform .field input[type='date']::-webkit-calendar-picker-indicator,
+.authform .field input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.authform .field input[type='date']::-webkit-calendar-picker-indicator:hover,
+.authform .field input[type='datetime-local']::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* the submit button spans the card, which is the one place .btn is a primary
+   action rather than one of several in a row */
+.authform .submit {
+  width: 100%;
+  padding: 10px 11px;
+  margin-top: 4px;
+}
+
+/* a per-field message, in the design's only red */
+.authform .field-error,
+.field-error {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--red);
+}
+
+/*! the .notice bar is built for the full width of the shell, where it sits between the
+ *! chrome and the body as a single horizontal line. inside a 392px card its flex row
+ *! squeezes the title and the message into two cramped columns, so in a form it stacks.
+ *? everything else about it — the red left edge, the hatched background, the mono face —
+ *? is the design's and stays */
+.authform .notice {
+  display: block;
+  padding: 9px 12px;
+  border-bottom: 0;
+  line-height: 1.5;
+}
+
+.authform .notice strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+/* the character counter that sits at the right end of a label */
+.authform .field > .lbl .count {
+  margin-left: auto;
+  color: var(--ink-ghost);
+}
+
+/* an inline link inside body copy.
+   ! the design's .link is scoped to `.chrome .link` — it has no general purpose inline link
+   ! style, because the mockup never had a sentence with a link in it. outside the chrome an
+   ! <a> therefore falls back to the browser's blue underline, which is the one thing in the
+   ! whole interface that is not the design
+   ? the rule below is .chrome .link verbatim, with --ink-dim in place of --ink-faint so it is
+   ? legible against body copy rather than against the chrome strip, and the same --ink hover.
+   ? the accent is deliberately not used here: the tokens call it "used sparingly" */
+.authform a,
+.note-txt a {
+  color: var(--ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-strong);
+  transition: color 0.12s;
+}
+
+.authform a:hover,
+.note-txt a:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink-faint);
+}
+
+/* --- 3. a row with an action beside it --------------------------------------
+   the design's .row-item stacks: a full width .row-main, and a .row-detail
+   under it that an expander reveals. that is right for the directory and the
+   groups list, where the row holds several actions behind one click.
+   ! a followers list is the opposite case: one action per row, wanted at a
+   ! glance, and the row itself still has to open the profile. the action
+   ! cannot live INSIDE .row-main — that is an <a>, and a button inside an
+   ! anchor is not layout a browser will do — so it sits beside it and the
+   ! row-item becomes the flex container.
+   ? every value is the design's own: 26px is .row-main's horizontal padding,
+   ? and .row-ops keeps its own gap and wrap from lacuna.css.                 */
+
+.row-item--act {
+  display: flex;
+  align-items: center;
+}
+
+.row-item--act .row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* .row-ops carries margin-top: 12px for the expanded panel it was written
+   for, which would push it off centre here */
+.row-item--act .row-ops {
+  margin: 0;
+  padding-right: 26px;
+  flex: none;
+}
+
+/* --- 4. the right rail's one navigating control -----------------------------
+   .presence button is the only control in the right rail that goes somewhere,
+   and the mockup draws it as bare text: `background: 0; border: 0`, with a
+   background only on hover. So until the pointer is already on it, it does not
+   read as a control at all — it reads as a row of status text, which is what
+   the eight panels around it are.
+   ! a resting hairline on the leading edge, the same --line the rows use,
+   ! which strengthens to the accent on hover and focus. it reserves its own
+   ! width at rest, so nothing shifts when it lights up.
+   ? deliberately the dimmest possible hint rather than a border or a fill:
+   ? the panel is a readout, and eight bordered buttons in it would read as a
+   ? form.                                                                    */
+
+.presence button {
+  border-left: 1px solid var(--line);
+  padding-left: 7px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+/*! no `outline: 0` here. lacuna.css opens with a global
+ *! `:focus-visible { outline: 1px solid var(--acid) }`, so every control in the app already
+ *! has a keyboard ring. .tile drops it deliberately because it replaces it with an acid
+ *! border of its own; copying that here would have taken the ring away and given nothing
+ *! back. all of this is about the RESTING state. */
+.presence button:hover,
+.presence button:focus-visible {
+  border-left-color: var(--acid-dim);
+  background: var(--c0c0c0e);
+}
+
+.presence button:hover .caret,
+.presence button:focus-visible .caret {
+  color: var(--ink-faint);
+}
+
+/* .caret is scoped to `.row-main .caret` in the design, so the presence row
+   needs its own. these are that rule's values */
+.presence .caret {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-ghost);
+  transition: color 0.12s;
+}
+
+/* ── the feed card opens its own post ───────────────────────────────────────────────────── */
+
+/*! lacuna.css already lights `.post:hover` with `var(--c0c0c0e)`, the same wash `.row-main`
+ *! uses for a row you can open. the card was drawn as a live surface from the start — the
+ *! mockup simply had no second page to send anyone to, so the one thing missing is the
+ *! pointer that says the wash means something.
+ *? no hover rule here. adding one would be a second opinion about a state the design already
+ *? has an opinion about, and they would drift. */
+.post[data-openable='1'] {
+  cursor: pointer;
+}
+
+/*! `cursor` inherits, so the rule above reaches every descendant and would put a pointer on
+ *! the reply box. the controls set their own (`.act`, `button`, `.btn` all declare pointer),
+ *! but a text field inherits whatever it is given and ends up claiming it is a link.
+ *? `auto` and not `text`, so each field keeps the cursor its own type implies */
+.post[data-openable='1'] input,
+.post[data-openable='1'] textarea,
+.post[data-openable='1'] select {
+  cursor: auto;
+}
+
+/*! the two panels that open inside the card are reading surfaces and the click handler skips
+ *! them, so the cursor has to agree — a pointer over text that does nothing when clicked is
+ *! the affordance lying */
+.post[data-openable='1'] .thread,
+.post[data-openable='1'] .post__meta {
+  cursor: auto;
+}
+
+/* ── the emoji tray ─────────────────────────────────────────────────────────────────────── */
+
+/*! the mockup has no picker, so none of this is ported — it is built out of the design's own
+ *! tokens and the .panel it hangs on, which is the same thing the invite popover on a group
+ *! page already does with .row-detail + .pad.panel */
+.emoji {
+  position: relative;
+  display: inline-flex;
+}
+
+.emoji__pop {
+  position: absolute;
+  left: 0;
+  z-index: 30;
+  padding: 8px;
+  /*! wide enough for eight columns and no wider. body carries `overflow-x: hidden`, so a tray
+   *! that reached past the right edge would be clipped with no way to scroll to it */
+  width: 252px;
+}
+
+/*! up by default: every composer in this app sits under the thing it is about, with the page
+ *! edge or a submit row below it. down is for a field near the top of a form, where up would
+ *! leave the viewport entirely */
+.emoji__pop[data-place='up'] {
+  bottom: calc(100% + 6px);
+}
+.emoji__pop[data-place='down'] {
+  top: calc(100% + 6px);
+}
+
+.emoji__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 1px;
+}
+
+.emoji__grid button {
+  font-size: 17px;
+  line-height: 1;
+  padding: 4px 0;
+  background: 0;
+  border: 0;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+/*! the same wash .row-main:hover and .post:hover use, so a hovered cell reads as the same kind
+ *! of live surface as everything else rather than inventing a highlight */
+.emoji__grid button:hover {
+  background: var(--c0c0c0e);
+}
+
+.emoji__hint {
+  margin: 7px 0 0;
+  color: var(--ink-ghost);
+}

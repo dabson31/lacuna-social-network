@@ -115,17 +115,25 @@ func (s *Store) setPrivacy(ctx context.Context, id int64, isPublic bool) error {
 	return nil
 }
 
-// this matches the query against name, nickname and email where we leave the caller out,
+// this matches the query against name and nickname where we leave the caller out,
+// ! email is deliberately NOT matched. it is not in ListUser either, but a LIKE on it leaks
+// ! the column anyway: a caller who guesses "@gmail.com" or a full address gets a hit, and a
+// ! hit is a yes/no answer about who holds that address. the same answer auth refuses to give
+// ! on purpose, where login returns one error for a wrong email and a wrong password and
+// ! burns the same 50ms either way (auth/service.go) so the response never confirms which
+// ! addresses are registered. matching on it here undid that in a search box
+// ? a user who wants to be findable by something short has a nickname for it, which is public
+// ? by design and is what the directory prints as a handle
 func (s *Store) search(ctx context.Context, viewerID int64, q string, limit, offset int) ([]ListUser, error) {
 	like := "%" + q + "%"
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, first_name, last_name, nickname, avatar_path, is_public
 		 FROM users
 		 WHERE id <> ?
-		   AND (first_name LIKE ? OR last_name LIKE ? OR nickname LIKE ? OR email LIKE ?)
+		   AND (first_name LIKE ? OR last_name LIKE ? OR nickname LIKE ?)
 		 ORDER BY first_name, last_name
 		 LIMIT ? OFFSET ?`,
-		viewerID, like, like, like, like, limit, offset,
+		viewerID, like, like, like, limit, offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search users: %w", err)
@@ -152,4 +160,21 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// state answers both halves of a visibility question at once: does this user exist at all,
+// and is their profile public. one row instead of two separate queries
+// base() already returns all of this, but it reads 10 columns and fills a raw struct, which
+// is a lot of work for a yes/no check that runs every time someone sends a message
+func (s *Store) state(ctx context.Context, id int64) (exists, isPublic bool, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT is_public FROM users WHERE id = ?`, id).Scan(&isPublic)
+
+	// no row = no user. false, false is already the right answer so theres nothing to build
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("user state: %w", err)
+	}
+	return true, isPublic, nil
 }

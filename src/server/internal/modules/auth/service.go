@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/mail"
-	"social-network/internal/platform/httpx"
-	"social-network/internal/platform/password"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"social/src/server/internal/platform/httpx"
+	"social/src/server/internal/platform/password"
 	"social/src/server/internal/platform/session"
 	"social/src/server/internal/platform/storage"
 )
@@ -25,10 +25,13 @@ type Service struct {
 	store   *Store
 	session *session.Store
 	uploads *storage.Store
+	// Sockets is wired at startup the same way the bus and the hub are. nil means a logout
+	// still destroys the session row, it just cannot hang up on the socket that row opened
+	Sockets Sockets
 }
 
 func NewService(store *Store, sessions *session.Store, uploads *storage.Store) *Service {
-	return &Service{store: store, sessions: sessions, uploads: uploads}
+	return &Service{store: store, session: sessions, uploads: uploads}
 }
 
 func (s *Service) Register(ctx context.Context, in RegisterInput) (User, session.Session, error) {
@@ -95,15 +98,32 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (User, session.Sessi
 		return User{}, session.Session{}, ErrInvalidCredentials
 	}
 
-	sess, err := s.sessions.Create(ctx, u.ID)
+	sess, err := s.session.Create(ctx, u.ID)
 	if err != nil {
 		return User{}, session.Session{}, err
 	}
 	return u, sess, nil
 }
 
-func (s *Service) Logout(ctx context.Context, sessionID string) error {
-	return s.sessions.Destroy(ctx, sessionID)
+// Logout ends one login: the session row goes, and so does any websocket that row
+// authenticated.
+// ! deleting the row is not enough on its own, and that is the bug this fixes. a socket is
+// ! authenticated once, at the handshake, and then nothing ever re-checks it — so a second
+// ! tab of the logged-out account kept its connection, kept receiving fan-out and kept being
+// ! allowed to send, which is how "is typing" arrived from an account that had logged out
+// ! the order matters: destroy first, then close. closing first leaves a window where the
+// ! client reconnects and the handshake succeeds against a session that is still alive
+// ? Sockets is nil in any build without the hub wired. the row is still gone, so the next
+// ? request on that cookie is a 401 either way — the live connection is the only thing that
+// ? needs telling
+func (s *Service) Logout(ctx context.Context, userID int64, sessionID string) error {
+	if err := s.session.Destroy(ctx, sessionID); err != nil {
+		return err
+	}
+	if s.Sockets != nil {
+		s.Sockets.CloseSession(userID, sessionID)
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID int64) (User, error) {
@@ -116,7 +136,7 @@ func (s *Service) startSession(ctx context.Context, userID int64) (User, session
 	if err != nil {
 		return User{}, session.Session{}, err
 	}
-	sess, err := s.sessions.Create(ctx, userID)
+	sess, err := s.session.Create(ctx, userID)
 	if err != nil {
 		return User{}, session.Session{}, err
 	}

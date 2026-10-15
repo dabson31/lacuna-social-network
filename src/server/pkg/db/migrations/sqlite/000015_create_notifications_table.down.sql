@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_notifications_unread;
+DROP INDEX IF EXISTS idx_notifications_inbox;
+DROP TABLE IF EXISTS notifications;

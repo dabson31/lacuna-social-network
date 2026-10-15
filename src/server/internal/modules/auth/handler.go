@@ -91,9 +91,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 // POST /api/auth/logout (requireAuth)
 // deletes the row AND clears the cookies obviously
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	// RequireAuth already proved this cookie exists and is valid
-	cookie, _ := r.Cookie(session.CookieName)
-	if err := h.svc.Logout(r.Context(), cookie.Value); err != nil {
+	// RequireAuth already looked this session up and put it in the context, so the cookie
+	// does not need re-reading. the id is what identifies the login being ended, and the user
+	// id is how the hub finds the sockets it opened without walking every socket on the server
+	sess, _ := session.Current(r.Context())
+	if err := h.svc.Logout(r.Context(), sess.UserID, sess.ID); err != nil {
 		h.writeErr(w, r, err)
 		return
 	}

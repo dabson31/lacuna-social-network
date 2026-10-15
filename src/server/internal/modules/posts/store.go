@@ -27,15 +27,41 @@ func NewStore(db *sql.DB) *Store {
 // it in go is not viable because it would break pagination (slows down computation and drains memory, bloaaaat)
 // because of the filter removing most of what we'll fetch anyway, the viewer id has to be passed three times, once
 // every branch, all the ? = the same viewer
+//
+// ! NAMED parameters, not positional, and that is load bearing rather than tidy. this predicate
+// ! is pasted into four different statements, each of which puts its OWN arguments around it in
+// ! a different order — canSee even passes the post id BEFORE the viewer. every branch needs the
+// ! same viewer, so with ? the caller has to count the branches and repeat the id exactly that
+// ! many times, in exactly the right slots. adding the follow check below took the count from
+// ! three to four, which would have silently shifted the cursor, the limit and the author id by
+// ! one in three of those four call sites. a named parameter is bound by name, so a new branch
+// ! costs nothing and cannot reach the arguments around it
+// ? sqlite refuses to mix the two styles in one statement, which is why the callers' own
+// ? arguments are named too
 const visible = `(
-	p.author_id = ?
+	p.author_id = :viewer
 	OR p.privacy = 'public'
 	OR (p.privacy = 'almost_private' AND EXISTS (
 		SELECT 1 FROM follows f
-		WHERE f.follower_id = ? AND f.followee_id = p.author_id AND f.status = 'accepted'))
-	OR (p.privacy = 'private' AND EXISTS (
+		WHERE f.follower_id = :viewer AND f.followee_id = p.author_id AND f.status = 'accepted'))
+	OR (p.privacy = 'private'
+	    AND EXISTS (
 		SELECT 1 FROM post_viewers pv
-		WHERE pv.post_id = p.id AND pv.user_id = ?))
+		WHERE pv.post_id = p.id AND pv.user_id = :viewer)
+	    --! being on the list is no longer enough on its own. the author picks from their
+	    --! followers, and the pick is a NARROWING of that audience rather than a grant that
+	    --! outlives it, so the follow has to still be there when the post is read
+	    --! without this the three levels are not a ladder: an ex follower is refused an
+	    --! almost_private post and handed a private one, which makes the strictest setting the
+	    --! leakiest. the row in post_viewers was written once, at publish, and nothing has ever
+	    --! gone back to it — unfollow does not know the table exists
+	    --? read time and not unfollow time, deliberately. deleting the row would quietly edit
+	    --? the author's chosen list on their behalf, and it would make a reconciliation
+	    --? permanent: follow again and the post is theirs to read again, which is what somebody
+	    --? who re-follows expects
+	    AND EXISTS (
+		SELECT 1 FROM follows f
+		WHERE f.follower_id = :viewer AND f.followee_id = p.author_id AND f.status = 'accepted'))
 )`
 
 // the column list and the author join are shared by every read so the scanner matches
@@ -45,14 +71,27 @@ const visible = `(
 const selectPost = ` 
 	SELECT p.id, p.author_id, p.content, p.image_path, p.privacy, p.created_at,
 	       u.first_name || ' ' || u.last_name AS author_name, u.avatar_path,
-	       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+	       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+	       --! counted the same way the private branch of the visibility rule grants access, so the
+	       --! number and the rule cannot disagree. the card renders it as "selected · N" and
+	       --! viewers button says "visible to N selected accounts" — that second one is a claim
+	       --! about who can READ the post, and a bare count of post_viewers stopped being an
+	       --! answer to it the moment a lapsed follow started revoking access
+	       --? it is the author's own reach readout, so it follows reach: pick three, one walks
+	       --? away, it reads 2, and it reads 3 again if they come back
+	       (SELECT COUNT(*) FROM post_viewers pv2
+	         WHERE pv2.post_id = p.id
+	           AND EXISTS (SELECT 1 FROM follows f2
+	                        WHERE f2.follower_id = pv2.user_id
+	                          AND f2.followee_id = p.author_id
+	                          AND f2.status = 'accepted')) AS viewer_count
 	FROM posts p
 	JOIN users u ON u.id = p.author_id`
 
 func scanPost(rows *sql.Rows) (Post, error) {
 	var p Post
 	err := rows.Scan(&p.ID, &p.AuthorID, &p.Content, &p.ImagePath, &p.Privacy, &p.CreatedAt,
-		&p.AuthorName, &p.AuthorAvatar, &p.CommentCount)
+		&p.AuthorName, &p.AuthorAvatar, &p.CommentCount, &p.ViewerCount)
 	return p, err
 }
 
@@ -129,15 +168,17 @@ func (s *Store) acceptedAmong(ctx context.Context, authorID int64, ids []int64) 
 // this makes sure the newest posts are visible first and shows the feed obv
 func (s *Store) feed(ctx context.Context, viewerID, before int64, limit int) ([]Post, error) {
 	return s.query(ctx,
-		selectPost+` WHERE `+visible+` AND (? = 0 OR p.id < ?) ORDER BY p.id DESC LIMIT ?`,
-		viewerID, viewerID, viewerID, before, before, limit)
+		selectPost+` WHERE `+visible+` AND (:before = 0 OR p.id < :before) ORDER BY p.id DESC LIMIT :limit`,
+		sql.Named("viewer", viewerID), sql.Named("before", before), sql.Named("limit", limit))
 }
 
 // this is the exact same thing as feeds, but filtered to one author while following visibility rules
 func (s *Store) authorPosts(ctx context.Context, viewerID, authorID, before int64, limit int) ([]Post, error) {
 	return s.query(ctx,
-		selectPost+` WHERE `+visible+` AND p.author_id = ? AND (? = 0 OR p.id < ?) ORDER BY p.id DESC LIMIT ?`,
-		viewerID, viewerID, viewerID, authorID, before, before, limit)
+		selectPost+` WHERE `+visible+` AND p.author_id = :author AND (:before = 0 OR p.id < :before)
+		 ORDER BY p.id DESC LIMIT :limit`,
+		sql.Named("viewer", viewerID), sql.Named("author", authorID),
+		sql.Named("before", before), sql.Named("limit", limit))
 }
 
 func (s *Store) query(ctx context.Context, q string, args ...any) ([]Post, error) {
@@ -163,8 +204,8 @@ func (s *Store) query(ctx context.Context, q string, args ...any) ([]Post, error
 // so its like a story in private instagram profile
 func (s *Store) byID(ctx context.Context, viewerID, postID int64) (Post, error) {
 	rows, err := s.db.QueryContext(ctx,
-		selectPost+` WHERE `+visible+` AND p.id = ?`,
-		viewerID, viewerID, viewerID, postID)
+		selectPost+` WHERE `+visible+` AND p.id = :post`,
+		sql.Named("viewer", viewerID), sql.Named("post", postID))
 	if err != nil {
 		return Post{}, fmt.Errorf("post by id: %w", err)
 	}
@@ -185,7 +226,8 @@ func (s *Store) byID(ctx context.Context, viewerID, postID int64) (Post, error) 
 func (s *Store) canSee(ctx context.Context, viewerID, postID int64) (bool, error) {
 	var one int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT 1 FROM posts p WHERE p.id = ? AND `+visible, postID, viewerID, viewerID, viewerID,
+		`SELECT 1 FROM posts p WHERE p.id = :post AND `+visible,
+		sql.Named("post", postID), sql.Named("viewer", viewerID),
 	).Scan(&one)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
@@ -228,4 +270,53 @@ func (s *Store) comments(ctx context.Context, postID int64) ([]Comment, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// imagePaths collects every file this post owns, its own image plus one per comment, so the
+// service can unlink them after the row is gone
+// ! the rows have to be read BEFORE the delete, because the cascade takes the comments with
+// ! the post and then there is nothing left to ask. collecting afterwards leaves every comment
+// ! image orphaned on disk forever, which is the kind of leak nobody notices until the volume
+// ! fills up
+func (s *Store) imagePaths(ctx context.Context, postID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT image_path FROM posts WHERE id = ? AND image_path IS NOT NULL
+		 UNION ALL
+		 SELECT image_path FROM comments WHERE post_id = ? AND image_path IS NOT NULL`,
+		postID, postID)
+	if err != nil {
+		return nil, fmt.Errorf("post image paths: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan image path: %w", err)
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
+}
+
+// remove deletes a post, but only if the caller wrote it.
+// ! the author check is in the WHERE and not in a separate SELECT, so there is no window
+// ! between "is it yours" and "delete it". comments and post_viewers go with it through
+// ! ON DELETE CASCADE, which only works because Open() sets foreign_keys = ON
+func (s *Store) remove(ctx context.Context, authorID, postID int64) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM posts WHERE id = ? AND author_id = ?`, postID, authorID)
+	if err != nil {
+		return fmt.Errorf("delete post: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// nothing matched, so either the post is gone or it belongs to somebody else. both read as
+	// not found, we never confirm that someone else's post exists to a caller who cannot touch it
+	if n == 0 {
+		return errNotVisible
+	}
+	return nil
 }

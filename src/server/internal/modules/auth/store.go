@@ -38,7 +38,7 @@ func scanUser(row scanner) (User, error) {
 	return u, err
 }
 
-func (s *Store) createUser(ctx context.Context, u User, passwordHash string) (int64, error) {
+func (s *Store) CreateUser(ctx context.Context, u User, passwordHash string) (int64, error) {
 	res, err := s.db.ExecContext(ctx, `
 	INSERT INTO users (email, password_hash, first_name, last_name, date_of_birth, avatar_path, nickname, about_me)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,

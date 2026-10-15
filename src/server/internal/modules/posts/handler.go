@@ -181,3 +181,19 @@ func (h *Handler) writeErr(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "internal server error")
 	}
 }
+
+// DELETE /api/posts/{id}, the design's "withdraw" action. only the author may do it, and
+// anybody else gets the same 404 an invisible post gives
+func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
+	authorID, _ := session.UserID(r.Context())
+	postID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "post id must be a number")
+		return
+	}
+	if err := h.svc.Delete(r.Context(), authorID, postID); err != nil {
+		h.writeErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

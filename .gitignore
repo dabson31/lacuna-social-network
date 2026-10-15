@@ -1,6 +1,29 @@
+# env and secrets
 .env
 *.env
-node_modules
-.next/
-out/
-src/web/node_modules
+
+# 500 billion gb of bullshit
+node_modules/
+node_modules/*
+
+# :eyes:
+plan/
+
+# db and uploads 
+src/server/data/uploads/*
+src/server/data/*.db
+
+.vscode/
+.vscode/*
+# throwaway security demo
+unmarshal/
+
+src/server/data/*.db*
+Docs/*.html
+
+# next build output
+src/web/.next/
+src/web/next-env.d.ts
+
+# typescript's incremental build cache, regenerated on every tsc run
+src/web/*.tsbuildinfo
